@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_dashboard" name="shell-type"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet"/><style>@layer base { html, body { margin: 0; padding: 0; } body { overscroll-behavior: none; } main > :first-child { margin-top: 0 !important; } main > :last-child { margin-bottom: 0 !important; } } ::-webkit-scrollbar { display: none; }</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { "colors": { "tertiary-container": "#001d31", "surface-dim": "#cbdbf5", "secondary-fixed-dim": "#b9c7df", "inverse-surface": "#213145", "tertiary-fixed": "#cce5ff", "secondary-fixed": "#d5e3fc", "on-surface-variant": "#45464d", "primary-container": "#131b2e", "on-tertiary": "#ffffff", "on-error": "#ffffff", "surface-bright": "#f8f9ff", "primary": "#000000", "background": "#f8f9ff", "on-primary-fixed-variant": "#3f465c", "surface": "#f8f9ff", "surface-container": "#e5eeff", "surface-container-high": "#dce9ff", "on-background": "#0b1c30", "on-secondary": "#ffffff", "error-container": "#ffdad6", "on-surface": "#0b1c30", "surface-container-highest": "#d3e4fe", "secondary": "#515f74", "surface-container-low": "#eff4ff", "outline": "#76777d", "on-primary": "#ffffff", "on-secondary-fixed-variant": "#3a485b", "surface-variant": "#d3e4fe", "on-error-container": "#93000a", "surface-tint": "#565e74", "inverse-primary": "#bec6e0", "on-tertiary-container": "#188ace", "outline-variant": "#c6c6cd", "on-primary-fixed": "#131b2e", "on-primary-container": "#7c839b", "tertiary-fixed-dim": "#93ccff", "secondary-container": "#d5e3fc", "primary-fixed-dim": "#bec6e0", "on-tertiary-fixed": "#001d31", "primary-fixed": "#dae2fd", "on-secondary-fixed": "#0d1c2e", "on-tertiary-fixed-variant": "#004b73", "surface-container-lowest": "#ffffff", "tertiary": "#000000", "inverse-on-surface": "#eaf1ff", "on-secondary-container": "#57657a", "error": "#ba1a1a" }, "borderRadius": { "DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem" }, "spacing": { "margin-sm": "1rem", "margin-lg": "2rem", "space-lg": "1rem", "gutter": "1rem", "gutter-lg": "1.5rem", "space-sm": "0.5rem", "gutter-sm": "0.5rem", "space-xl": "1.5rem", "margin": "1.5rem", "space-xs": "0.25rem", "space-md": "0.75rem" }, "fontFamily": { "headline-md": ["Inter"], "headline-sm": ["Inter"], "body-lg": ["Inter"], "headline-xl": ["Inter"], "headline-lg": ["Inter"], "body-sm": ["Inter"], "label-sm": ["Inter"], "label-md": ["Inter"], "tabular-md": ["Inter"], "tabular-sm": ["Inter"], "body-md": ["Inter"] }, "fontSize": { "headline-md": ["16px", { "lineHeight": "24px", "letterSpacing": "-0.01em", "fontWeight": "600" }], "headline-sm": ["14px", { "lineHeight": "20px", "letterSpacing": "-0.005em", "fontWeight": "600" }], "body-lg": ["15px", { "lineHeight": "22px", "letterSpacing": "0em", "fontWeight": "400" }], "headline-xl": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "600" }], "headline-lg": ["20px", { "lineHeight": "28px", "letterSpacing": "-0.015em", "fontWeight": "600" }], "body-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0em", "fontWeight": "400" }], "label-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0.02em", "fontWeight": "500" }], "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.01em", "fontWeight": "500" }], "tabular-md": ["13px", { "lineHeight": "18px", "letterSpacing": "0em", "fontWeight": "500" }], "tabular-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0em", "fontWeight": "500" }], "body-md": ["13px", { "lineHeight": "18px", "letterSpacing": "0em", "fontWeight": "400" }] } } } };</script></head><body class="bg-background text-on-surface font-body-md antialiased selection:bg-surface-container-high"><aside class="fixed top-0 left-0 bottom-0 w-64 bg-surface-container-lowest z-40 flex flex-col shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="h-20 px-margin flex items-center gap-space-sm bg-surface-container-low"><div class="w-7 h-7 bg-primary flex items-center justify-center rounded"><span class="material-symbols-outlined text-on-primary text-[16px]">corporate_fare</span></div><div class="flex flex-col"><span class="font-headline-sm text-headline-sm text-on-surface leading-none tracking-tight">Acme Tech</span><span class="font-label-sm text-label-sm text-on-surface-variant">HR & Payroll ERP</span></div></div><div class="flex-1 overflow-y-auto px-space-md py-space-md"><div class="px-space-sm py-space-xs"><span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider">HR Core</span></div><nav class="flex flex-col gap-space-xs mt-space-xs mb-space-md" data-active-classes="bg-surface-container text-on-surface font-semibold"><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors" data-path="people" href="#"><span class="material-symbols-outlined text-[18px]">group</span><span class="font-body-md text-body-md">People</span></a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors" data-path="time-off" href="#"><span class="material-symbols-outlined text-[18px]">calendar_today</span><span class="font-body-md text-body-md">Time off</span></a></nav><div class="px-space-sm py-space-xs flex items-center justify-between"><span class="font-label-sm text-label-sm text-primary uppercase tracking-wider font-semibold">Payroll</span><span class="font-label-sm text-label-sm text-secondary bg-surface-container-high px-1.5 py-0.5 rounded">Multiplier</span></div><nav class="flex flex-col gap-space-xs mt-space-xs" data-active-classes="bg-surface-container text-on-surface font-semibold"><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors" data-path="overview" href="#"><span class="material-symbols-outlined text-[18px]">dashboard</span><span class="font-body-md text-body-md">Overview</span></a><a class="flex items-center justify-between px-space-md py-space-sm rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors" data-path="action-needed" href="#"><div class="flex items-center gap-space-sm"><span class="material-symbols-outlined text-[18px]">pending_actions</span><span class="font-body-md text-body-md">Action needed</span></div><span class="w-5 h-5 flex items-center justify-center rounded bg-error-container text-on-error-container font-label-sm text-label-sm font-semibold">4</span></a><a aria-current="page" class="flex items-center gap-space-sm px-space-md py-space-sm rounded transition-colors bg-surface-container text-on-surface font-semibold" data-path="employees" href="#"><span class="material-symbols-outlined text-[18px]">badge</span><span class="font-body-md text-body-md">Employees</span></a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors" data-path="review-and-approve" href="#"><span class="material-symbols-outlined text-[18px]">fact_check</span><span class="font-body-md text-body-md">Review & approve</span></a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors" data-path="notifications" href="#"><span class="material-symbols-outlined text-[18px]">notifications</span><span class="font-body-md text-body-md">Notifications</span></a></nav><div class="my-space-md h-px bg-surface-container-highest"></div><div class="px-space-sm mb-space-xs"><span class="font-label-sm text-label-sm text-outline uppercase tracking-wider">Upcoming Modules</span></div><div class="flex flex-col gap-space-xs"><div class="flex items-center justify-between px-space-md py-space-sm rounded text-outline cursor-not-allowed select-none"><div class="flex items-center gap-space-sm"><span class="material-symbols-outlined text-[18px]">smart_toy</span><span class="font-body-md text-body-md">AI assistant</span></div><span class="font-label-sm text-label-sm px-1.5 py-0.5 rounded bg-surface-container text-secondary">V2</span></div><div class="flex items-center justify-between px-space-md py-space-sm rounded text-outline cursor-not-allowed select-none"><div class="flex items-center gap-space-sm"><span class="material-symbols-outlined text-[18px]">account_balance</span><span class="font-body-md text-body-md">Finance view</span></div><span class="font-label-sm text-label-sm px-1.5 py-0.5 rounded bg-surface-container text-secondary">V3</span></div><div class="flex items-center justify-between px-space-md py-space-sm rounded text-outline cursor-not-allowed select-none"><div class="flex items-center gap-space-sm"><span class="material-symbols-outlined text-[18px]">event</span><span class="font-body-md text-body-md">Calendar view</span></div><span class="font-label-sm text-label-sm px-1.5 py-0.5 rounded bg-surface-container text-secondary">V3</span></div></div></div><div class="p-space-md bg-surface-container-low"><div class="flex items-center gap-space-sm"><span class="material-symbols-outlined text-secondary text-[18px]">verified_user</span><div class="flex flex-col"><span class="font-label-sm text-label-sm text-on-surface font-semibold">SOC2 Type II</span><span class="font-label-sm text-label-sm text-on-surface-variant">Statutory Audit Active</span></div></div></div></aside><div class="pl-64"><header class="fixed top-0 left-64 right-0 h-20 bg-surface-container-lowest z-30 shadow-[0_1px_8px_rgba(0,0,0,0.04)] flex flex-col"><div class="h-7 bg-surface-container-low px-margin flex items-center justify-between"><div class="flex items-center gap-space-xs"><span class="font-label-sm text-label-sm text-on-surface-variant bg-surface-container px-2 py-0.5 rounded">Shown inside the customer's HR tool, e.g. Workday</span></div><div class="flex items-center gap-space-xs"><span class="font-label-sm text-label-sm text-on-surface-variant">Prototype date:</span><div class="relative inline-flex items-center bg-surface-container-lowest px-2 py-0.5 rounded shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><select class="font-label-sm text-label-sm text-on-surface bg-transparent pr-4 outline-none appearance-none cursor-pointer"><option>Oct 12</option><option>Oct 13</option><option>Oct 14</option><option>Oct 17</option><option>Oct 22</option></select><span class="material-symbols-outlined absolute right-1 pointer-events-none text-on-surface-variant text-[14px]">arrow_drop_down</span></div></div></div><div class="h-13 px-margin flex items-center justify-between gap-space-lg"><div class="flex-1 max-w-md"><div class="flex items-center gap-space-xs bg-surface-container px-space-md py-1 rounded w-full"><span class="material-symbols-outlined text-on-surface-variant text-[18px]">search</span><input class="bg-transparent border-0 outline-none w-full font-body-sm text-body-sm text-on-surface placeholder:text-outline" placeholder="Search employees, tax entities, batch runs (press '/' to focus)..." type="text"/></div></div><div class="flex items-center gap-space-md"><button class="w-8 h-8 flex items-center justify-center rounded hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors" title="Quick documentation" type="button"><span class="material-symbols-outlined text-[20px]">help_outline</span></button><button class="w-8 h-8 flex items-center justify-center rounded hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors" title="Audit Log alerts" type="button"><span class="material-symbols-outlined text-[20px]">notifications_none</span></button><div class="h-5 w-px bg-surface-container-highest"></div><div class="flex items-center gap-space-sm pl-space-xs"><div class="flex flex-col text-right"><span class="font-label-md text-label-md text-on-surface font-semibold leading-tight">Alex Morgan</span><span class="font-label-sm text-label-sm text-on-surface-variant leading-tight">HR Admin</span></div><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></div></header><main class="w-full pt-20 bg-background min-h-screen"><div class="w-full px-margin"><div class="h-12 flex items-center justify-between bg-surface-container-lowest my-space-md px-margin rounded shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="flex items-center gap-space-xs"><span class="font-headline-sm text-headline-sm text-on-surface font-semibold">Payroll</span><span class="text-outline font-label-md text-label-md">·</span><span class="font-body-md text-body-md text-on-surface font-medium">October 2026</span><span class="text-outline font-label-md text-label-md">·</span><span class="font-body-md text-body-md text-secondary">Powered by Multiplier</span></div><div class="flex items-center gap-space-xs"><span class="inline-block w-2 h-2 rounded-full bg-on-tertiary-container ring-2 ring-tertiary-fixed"></span><span class="font-body-sm text-body-sm text-secondary">Synced with Workday 12 min ago</span></div></div><div class="w-full pb-margin"><div class="flex flex-col w-full">
+<div class="flex flex-col w-full bg-surface-container-lowest rounded shadow-[0_1px_8px_rgba(0,0,0,0.04)] overflow-hidden">
+<div class="p-margin bg-surface-container-lowest">
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-space-md">
+<div class="flex flex-wrap items-center gap-space-sm flex-1">
+<div class="relative min-w-[180px]">
+<span class="absolute left-2.5 top-1/2 -translate-y-1/2 material-symbols-outlined text-outline text-[16px]">public</span>
+<select class="w-full h-8 pl-8 pr-7 bg-surface-container-low text-on-surface font-body-md text-body-md rounded appearance-none outline-none focus:bg-surface-container-high transition-colors cursor-pointer" id="filter-country">
+<option value="all">All countries</option>
+<option value="India">India</option>
+<option value="UK">United Kingdom</option>
+<option value="Germany">Germany</option>
+<option value="Brazil">Brazil</option>
+</select>
+<span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-outline text-[16px]">expand_more</span>
+</div>
+<div class="relative min-w-[190px]">
+<span class="absolute left-2.5 top-1/2 -translate-y-1/2 material-symbols-outlined text-outline text-[16px]">filter_list</span>
+<select class="w-full h-8 pl-8 pr-7 bg-surface-container-low text-on-surface font-body-md text-body-md rounded appearance-none outline-none focus:bg-surface-container-high transition-colors cursor-pointer" id="filter-action">
+<option value="all">All statuses</option>
+<option value="action-required">Action required</option>
+<option value="clear">Clear (No action needed)</option>
+</select>
+<span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-outline text-[16px]">expand_more</span>
+</div>
+<div class="relative flex-1 min-w-[220px] max-w-sm">
+<span class="absolute left-2.5 top-1/2 -translate-y-1/2 material-symbols-outlined text-outline text-[16px]">search</span>
+<input class="w-full h-8 pl-8 pr-3 bg-surface-container-low text-on-surface placeholder:text-outline font-body-md text-body-md rounded outline-none focus:bg-surface-container-high transition-colors" id="filter-search" placeholder="Filter employee name or ID..." type="text"/>
+</div>
+<button class="h-8 px-space-md bg-surface-container hover:bg-surface-container-high text-on-surface-variant font-label-md text-label-md rounded flex items-center gap-1 transition-colors" id="reset-filters">
+<span class="material-symbols-outlined text-[14px]">refresh</span>
+            Reset
+          </button>
+</div>
+<div class="flex items-center gap-space-sm self-end md:self-auto">
+<span class="font-tabular-sm text-tabular-sm text-secondary bg-surface-container px-2 py-1 rounded">Showing <strong class="text-on-surface font-semibold" id="visible-count">8</strong> of 8 active records</span>
+<button class="h-8 px-space-md bg-surface-container hover:bg-surface-container-high text-on-surface font-label-md text-label-md rounded flex items-center gap-1 transition-colors" title="Export current ledger view to CSV">
+<span class="material-symbols-outlined text-[15px]">download</span>
+            Export CSV
+          </button>
+</div>
+</div>
+</div>
+<div class="w-full overflow-x-auto">
+<table class="w-full text-left border-collapse select-text">
+<thead>
+<tr class="bg-surface-container-low text-secondary font-label-sm text-label-sm uppercase tracking-wider h-8">
+<th class="px-space-md py-1 font-medium w-64">Employee</th>
+<th class="px-space-md py-1 font-medium w-36">Country</th>
+<th class="px-space-md py-1 font-medium w-32">Date Added</th>
+<th class="px-space-md py-1 font-medium w-36">Stage</th>
+<th class="px-space-md py-1 font-medium min-w-[280px]">Action Needed</th>
+<th class="px-space-md py-1 font-medium min-w-[260px]">If No Action: Will Be Paid</th>
+<th class="px-space-md py-1 font-medium text-right w-28">Actions</th>
+</tr>
+</thead>
+<tbody class="font-body-md text-body-md text-on-surface divide-y divide-surface-container-low" id="employees-table-body">
+<tr class="employee-row hover:bg-surface-container-low/70 transition-colors group" data-action="action-required" data-country="India" data-name="Arjun Mehta">
+<td class="px-space-md py-2.5">
+<div class="flex items-center gap-space-sm">
+<div class="w-7 h-7 rounded bg-primary-container text-on-primary-fixed flex items-center justify-center font-label-md text-label-md font-semibold">AM</div>
+<div class="flex flex-col">
+<div class="flex items-center gap-1.5">
+<span class="font-headline-sm text-headline-sm text-on-surface">Arjun Mehta</span>
+<span class="px-1.5 py-0.2 bg-primary text-on-primary rounded font-label-sm text-label-sm uppercase tracking-wide">New</span>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface-variant">EMP-9402 · Software Eng</span>
+</div>
+</div>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<div class="flex items-center gap-1.5 text-on-surface font-body-md text-body-md">
+<span class="w-2 h-2 rounded-full bg-surface-tint"></span>
+                India
+              </div>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<span class="font-tabular-md text-tabular-md text-on-surface font-semibold">Oct 17</span>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-error-container text-on-error-container font-label-sm text-label-sm font-medium">
+<span class="material-symbols-outlined text-[13px]">lock_clock</span>
+                Input closed
+              </span>
+</td>
+<td class="px-space-md py-2.5">
+<div class="flex items-start gap-1.5">
+<span class="material-symbols-outlined text-error text-[15px] mt-0.5 shrink-0">error</span>
+<span class="font-body-md text-body-md text-error leading-snug">
+                  Added after Oct 15 cutoff → paid in November
+                </span>
+</div>
+</td>
+<td class="px-space-md py-2.5">
+<button class="h-7 px-space-md bg-primary hover:bg-on-surface text-on-primary rounded font-label-md text-label-md transition-colors flex items-center gap-1" onclick="requestOffCycle('Arjun Mehta')">
+<span class="material-symbols-outlined text-[14px]">bolt</span>
+                Request off-cycle payment
+              </button>
+</td>
+<td class="px-space-md py-2.5 text-right whitespace-nowrap">
+<button class="h-7 px-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded font-label-sm text-label-sm transition-colors inline-flex items-center gap-1" onclick="openHRProfile('Arjun Mehta')" title="Opens profile in HR tool">
+<span>Workday</span>
+<span class="material-symbols-outlined text-[13px]">open_in_new</span>
+</button>
+</td>
+</tr>
+<tr class="employee-row hover:bg-surface-container-low/70 transition-colors group cursor-pointer" data-action="action-required" data-country="India" data-name="Priya Nair" onclick="handleRowClick(event, 'Priya Nair')">
+<td class="px-space-md py-2.5">
+<div class="flex items-center gap-space-sm">
+<div class="w-7 h-7 rounded bg-secondary-fixed text-on-secondary-fixed flex items-center justify-center font-label-md text-label-md font-semibold">PN</div>
+<div class="flex flex-col">
+<div class="flex items-center gap-1.5">
+<span class="font-headline-sm text-headline-sm text-on-surface group-hover:underline">Priya Nair</span>
+<span class="px-1.5 py-0.2 bg-primary text-on-primary rounded font-label-sm text-label-sm uppercase tracking-wide">New</span>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface-variant">EMP-9388 · Product Ops</span>
+</div>
+</div>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<div class="flex items-center gap-1.5 text-on-surface font-body-md text-body-md">
+<span class="w-2 h-2 rounded-full bg-surface-tint"></span>
+                India
+              </div>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<span class="font-tabular-md text-tabular-md text-on-surface">Oct 13</span>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm font-medium">
+<span class="material-symbols-outlined text-[13px]">sync_problem</span>
+                Verification
+              </span>
+</td>
+<td class="px-space-md py-2.5">
+<div class="inline-flex items-start gap-1.5 p-1 rounded bg-surface-container-low text-on-surface-variant">
+<span class="material-symbols-outlined text-secondary text-[15px] mt-0.5 shrink-0">warning_amber</span>
+<span class="font-body-md text-body-md leading-snug">
+                  Missing PAN, bank details – fix by Oct 15 for October pay
+                </span>
+</div>
+</td>
+<td class="px-space-md py-2.5">
+<div class="flex flex-col gap-0.5">
+<span class="font-body-md text-body-md text-secondary">Will be paid in November unless details provided</span>
+<a class="text-on-surface font-label-sm text-label-sm font-semibold underline hover:text-outline inline-flex items-center gap-1" href="javascript:void(0)" onclick="openHRProfile('Priya Nair'); event.stopPropagation();">
+                  View profile in HR tool
+                  <span class="material-symbols-outlined text-[12px]">open_in_new</span>
+</a>
+</div>
+</td>
+<td class="px-space-md py-2.5 text-right whitespace-nowrap">
+<button class="h-7 px-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded font-label-sm text-label-sm transition-colors inline-flex items-center gap-1" onclick="openHRProfile('Priya Nair'); event.stopPropagation();" title="Opens profile in HR tool">
+<span>Workday</span>
+<span class="material-symbols-outlined text-[13px]">open_in_new</span>
+</button>
+</td>
+</tr>
+<tr class="employee-row hover:bg-surface-container-low/70 transition-colors group" data-action="action-required" data-country="UK" data-name="James Patel">
+<td class="px-space-md py-2.5">
+<div class="flex items-center gap-space-sm">
+<div class="w-7 h-7 rounded bg-surface-container text-on-surface flex items-center justify-center font-label-md text-label-md font-semibold">JP</div>
+<div class="flex flex-col">
+<div class="flex items-center gap-1.5">
+<span class="font-headline-sm text-headline-sm text-on-surface">James Patel</span>
+<span class="px-1.5 py-0.2 bg-primary text-on-primary rounded font-label-sm text-label-sm uppercase tracking-wide">New</span>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface-variant">EMP-9351 · Marketing Dir</span>
+</div>
+</div>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<div class="flex items-center gap-1.5 text-on-surface font-body-md text-body-md">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+                UK
+              </div>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<span class="font-tabular-md text-tabular-md text-on-surface">Oct 10</span>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-surface-container text-on-surface-variant font-label-sm text-label-sm font-medium">
+<span class="material-symbols-outlined text-[13px]">fact_check</span>
+                Verification
+              </span>
+</td>
+<td class="px-space-md py-2.5">
+<div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-surface-container-high text-on-surface">
+<span class="material-symbols-outlined text-secondary text-[14px]">payments</span>
+<span class="font-body-md text-body-md font-medium">Bonus £8,000 (one-off) · October</span>
+</div>
+</td>
+<td class="px-space-md py-2.5">
+<div class="flex flex-col">
+<span class="font-tabular-md text-tabular-md text-on-surface font-semibold">Will be paid £12,000</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Base £4,000 + Bonus £8,000</span>
+</div>
+</td>
+<td class="px-space-md py-2.5 text-right whitespace-nowrap">
+<button class="h-7 px-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded font-label-sm text-label-sm transition-colors inline-flex items-center gap-1" onclick="openHRProfile('James Patel')" title="Opens profile in HR tool">
+<span>Workday</span>
+<span class="material-symbols-outlined text-[13px]">open_in_new</span>
+</button>
+</td>
+</tr>
+<tr class="employee-row hover:bg-surface-container-low/70 transition-colors group" data-action="action-required" data-country="Germany" data-name="Lena Fischer">
+<td class="px-space-md py-2.5">
+<div class="flex items-center gap-space-sm">
+<div class="w-7 h-7 rounded bg-error-container text-on-error-container flex items-center justify-center font-label-md text-label-md font-semibold">LF</div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface">Lena Fischer</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">EMP-8104 · Staff Analyst</span>
+</div>
+</div>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<div class="flex items-center gap-1.5 text-on-surface font-body-md text-body-md">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+                Germany
+              </div>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<span class="font-body-md text-body-md text-on-surface-variant">Before cycle</span>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-error-container text-on-error-container font-label-sm text-label-sm font-semibold">
+<span class="material-symbols-outlined text-[13px]">pause_circle</span>
+                On hold
+              </span>
+</td>
+<td class="px-space-md py-2.5">
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-error-container text-on-error-container font-body-md text-body-md font-medium">
+<span class="material-symbols-outlined text-[14px]">badge</span>
+                Tax ID missing
+              </span>
+</td>
+<td class="px-space-md py-2.5">
+<span class="font-body-md text-body-md text-on-surface-variant font-medium">Paid in next cycle (Only Lena held)</span>
+</td>
+<td class="px-space-md py-2.5 text-right whitespace-nowrap">
+<button class="h-7 px-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded font-label-sm text-label-sm transition-colors inline-flex items-center gap-1" onclick="openHRProfile('Lena Fischer')" title="Opens profile in HR tool">
+<span>Workday</span>
+<span class="material-symbols-outlined text-[13px]">open_in_new</span>
+</button>
+</td>
+</tr>
+<tr class="employee-row hover:bg-surface-container-low/70 transition-colors group" data-action="clear" data-country="Brazil" data-name="Carlos Silva">
+<td class="px-space-md py-2.5">
+<div class="flex items-center gap-space-sm">
+<div class="w-7 h-7 rounded bg-surface-container-low text-on-surface-variant flex items-center justify-center font-label-md text-label-md font-semibold">CS</div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface">Carlos Silva</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">EMP-7712 · Senior Designer</span>
+</div>
+</div>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<div class="flex items-center gap-1.5 text-on-surface font-body-md text-body-md">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+                Brazil
+              </div>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<span class="font-body-md text-body-md text-on-surface-variant">Before cycle</span>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-surface-container-low text-on-surface-variant font-label-sm text-label-sm font-medium">
+<span class="material-symbols-outlined text-[13px]">check_circle</span>
+                Validated
+              </span>
+</td>
+<td class="px-space-md py-2.5 text-outline">
+<span class="font-body-md text-body-md">None</span>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<div class="flex items-baseline gap-1.5">
+<span class="font-tabular-md text-tabular-md text-on-surface font-medium">Regular pay R$18,500</span>
+<span class="font-body-sm text-body-sm text-outline">· same as September</span>
+</div>
+</td>
+<td class="px-space-md py-2.5 text-right whitespace-nowrap">
+<button class="h-7 px-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded font-label-sm text-label-sm transition-colors inline-flex items-center gap-1" onclick="openHRProfile('Carlos Silva')" title="Opens profile in HR tool">
+<span>Workday</span>
+<span class="material-symbols-outlined text-[13px]">open_in_new</span>
+</button>
+</td>
+</tr>
+<tr class="employee-row hover:bg-surface-container-low/70 transition-colors group" data-action="clear" data-country="India" data-name="Ananya Sen">
+<td class="px-space-md py-2.5">
+<div class="flex items-center gap-space-sm">
+<div class="w-7 h-7 rounded bg-surface-container-low text-on-surface-variant flex items-center justify-center font-label-md text-label-md font-semibold">AS</div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface">Ananya Sen</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">EMP-6520 · Finance Specialist</span>
+</div>
+</div>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<div class="flex items-center gap-1.5 text-on-surface font-body-md text-body-md">
+<span class="w-2 h-2 rounded-full bg-surface-tint"></span>
+                India
+              </div>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<span class="font-body-md text-body-md text-on-surface-variant">Before cycle</span>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-surface-container-low text-on-surface-variant font-label-sm text-label-sm font-medium">
+<span class="material-symbols-outlined text-[13px]">check_circle</span>
+                Validated
+              </span>
+</td>
+<td class="px-space-md py-2.5 text-outline">
+<span class="font-body-md text-body-md">None</span>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<div class="flex items-baseline gap-1.5">
+<span class="font-tabular-md text-tabular-md text-on-surface font-medium">₹1,20,000</span>
+<span class="font-body-sm text-body-sm text-outline">· same as September</span>
+</div>
+</td>
+<td class="px-space-md py-2.5 text-right whitespace-nowrap">
+<button class="h-7 px-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded font-label-sm text-label-sm transition-colors inline-flex items-center gap-1" onclick="openHRProfile('Ananya Sen')" title="Opens profile in HR tool">
+<span>Workday</span>
+<span class="material-symbols-outlined text-[13px]">open_in_new</span>
+</button>
+</td>
+</tr>
+<tr class="employee-row hover:bg-surface-container-low/70 transition-colors group" data-action="clear" data-country="UK" data-name="David Clark">
+<td class="px-space-md py-2.5">
+<div class="flex items-center gap-space-sm">
+<div class="w-7 h-7 rounded bg-surface-container-low text-on-surface-variant flex items-center justify-center font-label-md text-label-md font-semibold">DC</div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface">David Clark</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">EMP-6003 · Security Eng</span>
+</div>
+</div>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<div class="flex items-center gap-1.5 text-on-surface font-body-md text-body-md">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+                UK
+              </div>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<span class="font-body-md text-body-md text-on-surface-variant">Before cycle</span>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-surface-container-low text-on-surface-variant font-label-sm text-label-sm font-medium">
+<span class="material-symbols-outlined text-[13px]">check_circle</span>
+                Validated
+              </span>
+</td>
+<td class="px-space-md py-2.5 text-outline">
+<span class="font-body-md text-body-md">None</span>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<div class="flex items-baseline gap-1.5">
+<span class="font-tabular-md text-tabular-md text-on-surface font-medium">£5,200</span>
+<span class="font-body-sm text-body-sm text-outline">· same as September</span>
+</div>
+</td>
+<td class="px-space-md py-2.5 text-right whitespace-nowrap">
+<button class="h-7 px-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded font-label-sm text-label-sm transition-colors inline-flex items-center gap-1" onclick="openHRProfile('David Clark')" title="Opens profile in HR tool">
+<span>Workday</span>
+<span class="material-symbols-outlined text-[13px]">open_in_new</span>
+</button>
+</td>
+</tr>
+<tr class="employee-row hover:bg-surface-container-low/70 transition-colors group" data-action="clear" data-country="Germany" data-name="Hanna Becker">
+<td class="px-space-md py-2.5">
+<div class="flex items-center gap-space-sm">
+<div class="w-7 h-7 rounded bg-surface-container-low text-on-surface-variant flex items-center justify-center font-label-md text-label-md font-semibold">HB</div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface">Hanna Becker</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">EMP-5899 · Tech Lead</span>
+</div>
+</div>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<div class="flex items-center gap-1.5 text-on-surface font-body-md text-body-md">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+                Germany
+              </div>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<span class="font-body-md text-body-md text-on-surface-variant">Before cycle</span>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-surface-container-low text-on-surface-variant font-label-sm text-label-sm font-medium">
+<span class="material-symbols-outlined text-[13px]">check_circle</span>
+                Validated
+              </span>
+</td>
+<td class="px-space-md py-2.5 text-outline">
+<span class="font-body-md text-body-md">None</span>
+</td>
+<td class="px-space-md py-2.5 whitespace-nowrap">
+<div class="flex items-baseline gap-1.5">
+<span class="font-tabular-md text-tabular-md text-on-surface font-medium">€4,800</span>
+<span class="font-body-sm text-body-sm text-outline">· same as September</span>
+</div>
+</td>
+<td class="px-space-md py-2.5 text-right whitespace-nowrap">
+<button class="h-7 px-2 text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded font-label-sm text-label-sm transition-colors inline-flex items-center gap-1" onclick="openHRProfile('Hanna Becker')" title="Opens profile in HR tool">
+<span>Workday</span>
+<span class="material-symbols-outlined text-[13px]">open_in_new</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="px-margin py-3 bg-surface-container-low flex items-center justify-between">
+<div class="flex items-center gap-space-xs text-secondary font-label-sm text-label-sm">
+<span class="material-symbols-outlined text-[15px]">info</span>
+<span>Employee updates added on or before Oct 15 cutoff are locked for the current run. Changes made after Oct 15 will roll into the next payroll cycle.</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="font-label-sm text-label-sm text-on-surface-variant">Batch cycle: Oct 2026 (Live)</span>
+</div>
+</div>
+</div>
+<div class="fixed bottom-6 right-6 z-50 bg-primary text-on-primary px-space-lg py-space-md rounded shadow-xl flex items-center gap-space-md transition-opacity duration-300 opacity-0 pointer-events-none" id="toast">
+<span class="material-symbols-outlined text-[18px]" id="toast-icon">info</span>
+<span class="font-body-md text-body-md" id="toast-message">Notification</span>
+</div>
+</div>
+<script>
+  function showToast(message, icon) {
+    const toast = document.getElementById('toast');
+    const toastMsg = document.getElementById('toast-message');
+    const toastIcon = document.getElementById('toast-icon');
+    
+    toastMsg.textContent = message;
+    toastIcon.textContent = icon || 'info';
+    
+    toast.classList.remove('opacity-0', 'pointer-events-none');
+    toast.classList.add('opacity-100');
+    
+    setTimeout(() => {
+      toast.classList.remove('opacity-100');
+      toast.classList.add('opacity-0', 'pointer-events-none');
+    }, 3200);
+  }
+
+  function openHRProfile(name) {
+    showToast(`Opens ${name}'s profile in customer's HR tool (Workday)`, 'open_in_new');
+  }
+
+  function requestOffCycle(name) {
+    showToast(`Off-cycle payment request draft initiated for ${name}`, 'bolt');
+  }
+
+  function handleRowClick(event, name) {
+    if (event.target.closest('button') || event.target.closest('a')) return;
+    openHRProfile(name);
+  }
+
+  const countrySelect = document.getElementById('filter-country');
+  const actionSelect = document.getElementById('filter-action');
+  const searchInput = document.getElementById('filter-search');
+  const resetBtn = document.getElementById('reset-filters');
+  const countEl = document.getElementById('visible-count');
+  const rows = document.querySelectorAll('.employee-row');
+
+  function applyFilters() {
+    const selectedCountry = countrySelect.value.toLowerCase();
+    const selectedAction = actionSelect.value.toLowerCase();
+    const searchQuery = searchInput.value.trim().toLowerCase();
+
+    let visible = 0;
+
+    rows.forEach(row => {
+      const rowCountry = (row.getAttribute('data-country') || '').toLowerCase();
+      const rowAction = (row.getAttribute('data-action') || '').toLowerCase();
+      const rowName = (row.getAttribute('data-name') || '').toLowerCase();
+
+      const matchesCountry = (selectedCountry === 'all') || (rowCountry === selectedCountry);
+      const matchesAction = (selectedAction === 'all') || (rowAction === selectedAction);
+      const matchesSearch = !searchQuery || rowName.includes(searchQuery);
+
+      if (matchesCountry && matchesAction && matchesSearch) {
+        row.style.display = '';
+        visible++;
+      } else {
+        row.style.display = 'none';
+      }
+    });
+
+    if (countEl) countEl.textContent = visible;
+  }
+
+  if (countrySelect) countrySelect.addEventListener('change', applyFilters);
+  if (actionSelect) actionSelect.addEventListener('change', applyFilters);
+  if (searchInput) searchInput.addEventListener('input', applyFilters);
+
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      countrySelect.value = 'all';
+      actionSelect.value = 'all';
+      searchInput.value = '';
+      applyFilters();
+    });
+  }
+</script></div></div></main></div></body></html>

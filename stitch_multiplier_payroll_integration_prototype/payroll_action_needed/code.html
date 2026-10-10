@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_dashboard" name="shell-type"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet"/><style>@layer base { html, body { margin: 0; padding: 0; } body { overscroll-behavior: none; } main > :first-child { margin-top: 0 !important; } main > :last-child { margin-bottom: 0 !important; } } ::-webkit-scrollbar { display: none; }</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { "colors": { "tertiary-container": "#001d31", "surface-dim": "#cbdbf5", "secondary-fixed-dim": "#b9c7df", "inverse-surface": "#213145", "tertiary-fixed": "#cce5ff", "secondary-fixed": "#d5e3fc", "on-surface-variant": "#45464d", "primary-container": "#131b2e", "on-tertiary": "#ffffff", "on-error": "#ffffff", "surface-bright": "#f8f9ff", "primary": "#000000", "background": "#f8f9ff", "on-primary-fixed-variant": "#3f465c", "surface": "#f8f9ff", "surface-container": "#e5eeff", "surface-container-high": "#dce9ff", "on-background": "#0b1c30", "on-secondary": "#ffffff", "error-container": "#ffdad6", "on-surface": "#0b1c30", "surface-container-highest": "#d3e4fe", "secondary": "#515f74", "surface-container-low": "#eff4ff", "outline": "#76777d", "on-primary": "#ffffff", "on-secondary-fixed-variant": "#3a485b", "surface-variant": "#d3e4fe", "on-error-container": "#93000a", "surface-tint": "#565e74", "inverse-primary": "#bec6e0", "on-tertiary-container": "#188ace", "outline-variant": "#c6c6cd", "on-primary-fixed": "#131b2e", "on-primary-container": "#7c839b", "tertiary-fixed-dim": "#93ccff", "secondary-container": "#d5e3fc", "primary-fixed-dim": "#bec6e0", "on-tertiary-fixed": "#001d31", "primary-fixed": "#dae2fd", "on-secondary-fixed": "#0d1c2e", "on-tertiary-fixed-variant": "#004b73", "surface-container-lowest": "#ffffff", "tertiary": "#000000", "inverse-on-surface": "#eaf1ff", "on-secondary-container": "#57657a", "error": "#ba1a1a" }, "borderRadius": { "DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem" }, "spacing": { "margin-sm": "1rem", "margin-lg": "2rem", "space-lg": "1rem", "gutter": "1rem", "gutter-lg": "1.5rem", "space-sm": "0.5rem", "gutter-sm": "0.5rem", "space-xl": "1.5rem", "margin": "1.5rem", "space-xs": "0.25rem", "space-md": "0.75rem" }, "fontFamily": { "headline-md": ["Inter"], "headline-sm": ["Inter"], "body-lg": ["Inter"], "headline-xl": ["Inter"], "headline-lg": ["Inter"], "body-sm": ["Inter"], "label-sm": ["Inter"], "label-md": ["Inter"], "tabular-md": ["Inter"], "tabular-sm": ["Inter"], "body-md": ["Inter"] }, "fontSize": { "headline-md": ["16px", { "lineHeight": "24px", "letterSpacing": "-0.01em", "fontWeight": "600" }], "headline-sm": ["14px", { "lineHeight": "20px", "letterSpacing": "-0.005em", "fontWeight": "600" }], "body-lg": ["15px", { "lineHeight": "22px", "letterSpacing": "0em", "fontWeight": "400" }], "headline-xl": ["24px", { "lineHeight": "32px", "letterSpacing": "-0.02em", "fontWeight": "600" }], "headline-lg": ["20px", { "lineHeight": "28px", "letterSpacing": "-0.015em", "fontWeight": "600" }], "body-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0em", "fontWeight": "400" }], "label-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0.02em", "fontWeight": "500" }], "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.01em", "fontWeight": "500" }], "tabular-md": ["13px", { "lineHeight": "18px", "letterSpacing": "0em", "fontWeight": "500" }], "tabular-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0em", "fontWeight": "500" }], "body-md": ["13px", { "lineHeight": "18px", "letterSpacing": "0em", "fontWeight": "400" }] } } } };</script></head><body class="bg-background text-on-surface font-body-md antialiased selection:bg-surface-container-high"><aside class="fixed top-0 left-0 bottom-0 w-64 bg-surface-container-lowest z-40 flex flex-col shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="h-20 px-margin flex items-center gap-space-sm bg-surface-container-low"><div class="w-7 h-7 bg-primary flex items-center justify-center rounded"><span class="material-symbols-outlined text-on-primary text-[16px]">corporate_fare</span></div><div class="flex flex-col"><span class="font-headline-sm text-headline-sm text-on-surface leading-none tracking-tight">Acme Tech</span><span class="font-label-sm text-label-sm text-on-surface-variant">HR & Payroll ERP</span></div></div><div class="flex-1 overflow-y-auto px-space-md py-space-md"><div class="px-space-sm py-space-xs"><span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider">HR Core</span></div><nav class="flex flex-col gap-space-xs mt-space-xs mb-space-md" data-active-classes="bg-surface-container text-on-surface font-semibold"><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors" data-path="people" href="#"><span class="material-symbols-outlined text-[18px]">group</span><span class="font-body-md text-body-md">People</span></a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors" data-path="time-off" href="#"><span class="material-symbols-outlined text-[18px]">calendar_today</span><span class="font-body-md text-body-md">Time off</span></a></nav><div class="px-space-sm py-space-xs flex items-center justify-between"><span class="font-label-sm text-label-sm text-primary uppercase tracking-wider font-semibold">Payroll</span><span class="font-label-sm text-label-sm text-secondary bg-surface-container-high px-1.5 py-0.5 rounded">Multiplier</span></div><nav class="flex flex-col gap-space-xs mt-space-xs" data-active-classes="bg-surface-container text-on-surface font-semibold"><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors" data-path="overview" href="#"><span class="material-symbols-outlined text-[18px]">dashboard</span><span class="font-body-md text-body-md">Overview</span></a><a aria-current="page" class="flex items-center justify-between px-space-md py-space-sm rounded transition-colors bg-surface-container text-on-surface font-semibold" data-path="action-needed" href="#"><div class="flex items-center gap-space-sm"><span class="material-symbols-outlined text-[18px]">pending_actions</span><span class="font-body-md text-body-md">Action needed</span></div><span class="w-5 h-5 flex items-center justify-center rounded bg-error-container text-on-error-container font-label-sm text-label-sm font-semibold">4</span></a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors" data-path="employees" href="#"><span class="material-symbols-outlined text-[18px]">badge</span><span class="font-body-md text-body-md">Employees</span></a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors" data-path="review-and-approve" href="#"><span class="material-symbols-outlined text-[18px]">fact_check</span><span class="font-body-md text-body-md">Review & approve</span></a><a class="flex items-center gap-space-sm px-space-md py-space-sm rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors" data-path="notifications" href="#"><span class="material-symbols-outlined text-[18px]">notifications</span><span class="font-body-md text-body-md">Notifications</span></a></nav><div class="my-space-md h-px bg-surface-container-highest"></div><div class="px-space-sm mb-space-xs"><span class="font-label-sm text-label-sm text-outline uppercase tracking-wider">Upcoming Modules</span></div><div class="flex flex-col gap-space-xs"><div class="flex items-center justify-between px-space-md py-space-sm rounded text-outline cursor-not-allowed select-none"><div class="flex items-center gap-space-sm"><span class="material-symbols-outlined text-[18px]">smart_toy</span><span class="font-body-md text-body-md">AI assistant</span></div><span class="font-label-sm text-label-sm px-1.5 py-0.5 rounded bg-surface-container text-secondary">V2</span></div><div class="flex items-center justify-between px-space-md py-space-sm rounded text-outline cursor-not-allowed select-none"><div class="flex items-center gap-space-sm"><span class="material-symbols-outlined text-[18px]">account_balance</span><span class="font-body-md text-body-md">Finance view</span></div><span class="font-label-sm text-label-sm px-1.5 py-0.5 rounded bg-surface-container text-secondary">V3</span></div><div class="flex items-center justify-between px-space-md py-space-sm rounded text-outline cursor-not-allowed select-none"><div class="flex items-center gap-space-sm"><span class="material-symbols-outlined text-[18px]">event</span><span class="font-body-md text-body-md">Calendar view</span></div><span class="font-label-sm text-label-sm px-1.5 py-0.5 rounded bg-surface-container text-secondary">V3</span></div></div></div><div class="p-space-md bg-surface-container-low"><div class="flex items-center gap-space-sm"><span class="material-symbols-outlined text-secondary text-[18px]">verified_user</span><div class="flex flex-col"><span class="font-label-sm text-label-sm text-on-surface font-semibold">SOC2 Type II</span><span class="font-label-sm text-label-sm text-on-surface-variant">Statutory Audit Active</span></div></div></div></aside><div class="pl-64"><header class="fixed top-0 left-64 right-0 h-20 bg-surface-container-lowest z-30 shadow-[0_1px_8px_rgba(0,0,0,0.04)] flex flex-col"><div class="h-7 bg-surface-container-low px-margin flex items-center justify-between"><div class="flex items-center gap-space-xs"><span class="font-label-sm text-label-sm text-on-surface-variant bg-surface-container px-2 py-0.5 rounded">Shown inside the customer's HR tool, e.g. Workday</span></div><div class="flex items-center gap-space-xs"><span class="font-label-sm text-label-sm text-on-surface-variant">Prototype date:</span><div class="relative inline-flex items-center bg-surface-container-lowest px-2 py-0.5 rounded shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><select class="font-label-sm text-label-sm text-on-surface bg-transparent pr-4 outline-none appearance-none cursor-pointer"><option>Oct 12</option><option>Oct 13</option><option>Oct 14</option><option>Oct 17</option><option>Oct 22</option></select><span class="material-symbols-outlined absolute right-1 pointer-events-none text-on-surface-variant text-[14px]">arrow_drop_down</span></div></div></div><div class="h-13 px-margin flex items-center justify-between gap-space-lg"><div class="flex-1 max-w-md"><div class="flex items-center gap-space-xs bg-surface-container px-space-md py-1 rounded w-full"><span class="material-symbols-outlined text-on-surface-variant text-[18px]">search</span><input class="bg-transparent border-0 outline-none w-full font-body-sm text-body-sm text-on-surface placeholder:text-outline" placeholder="Search employees, tax entities, batch runs (press '/' to focus)..." type="text"/></div></div><div class="flex items-center gap-space-md"><button class="w-8 h-8 flex items-center justify-center rounded hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors" title="Quick documentation" type="button"><span class="material-symbols-outlined text-[20px]">help_outline</span></button><button class="w-8 h-8 flex items-center justify-center rounded hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors" title="Audit Log alerts" type="button"><span class="material-symbols-outlined text-[20px]">notifications_none</span></button><div class="h-5 w-px bg-surface-container-highest"></div><div class="flex items-center gap-space-sm pl-space-xs"><div class="flex flex-col text-right"><span class="font-label-md text-label-md text-on-surface font-semibold leading-tight">Alex Morgan</span><span class="font-label-sm text-label-sm text-on-surface-variant leading-tight">HR Admin</span></div><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div></div></header><main class="w-full pt-20 bg-background min-h-screen"><div class="w-full px-margin"><div class="h-12 flex items-center justify-between bg-surface-container-lowest my-space-md px-margin rounded shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="flex items-center gap-space-xs"><span class="font-headline-sm text-headline-sm text-on-surface font-semibold">Payroll</span><span class="text-outline font-label-md text-label-md">·</span><span class="font-body-md text-body-md text-on-surface font-medium">October 2026</span><span class="text-outline font-label-md text-label-md">·</span><span class="font-body-md text-body-md text-secondary">Powered by Multiplier</span></div><div class="flex items-center gap-space-xs"><span class="inline-block w-2 h-2 rounded-full bg-on-tertiary-container ring-2 ring-tertiary-fixed"></span><span class="font-body-sm text-body-sm text-secondary">Synced with Workday 12 min ago</span></div></div><div class="w-full pb-margin"><div class="flex flex-col w-full">
+<div class="flex items-center justify-between mb-space-md bg-surface-container-low px-margin py-space-sm rounded shadow-sm">
+<div class="flex items-center gap-space-sm">
+<div class="w-2.5 h-2.5 rounded-full bg-error animate-pulse"></div>
+<span class="font-headline-sm text-headline-sm text-on-surface">Action Queue: 4 Exceptions Requiring Human Intervention</span>
+<span class="font-label-sm text-label-sm text-secondary bg-surface-container px-2 py-0.5 rounded">Cycle Freeze: Oct 17, 18:00 UTC</span>
+</div>
+<div class="flex items-center gap-space-md">
+<span class="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-[15px] text-secondary">verified</span>
+        Statutory pre-check active
+      </span>
+<span class="h-3 w-px bg-surface-container-highest"></span>
+<span class="font-tabular-sm text-tabular-sm text-secondary">Workforce: 120 Total</span>
+</div>
+</div>
+<div class="grid grid-cols-12 gap-gutter items-start">
+<div class="col-span-12 lg:col-span-5 flex flex-col gap-space-xs">
+<div class="flex items-center justify-between px-space-sm py-space-xs">
+<span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider">Prioritized Resolution Queue</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Sorted by Severity</span>
+</div>
+<div class="group relative cursor-pointer bg-surface-container-lowest p-space-md rounded transition-all shadow-sm hover:shadow-md border-l-4 border-l-error bg-surface-container-low" id="item-lena" onclick="selectActionItem('lena')">
+<div class="flex items-start justify-between gap-space-sm">
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center gap-space-xs">
+<span class="font-label-sm text-label-sm font-semibold uppercase px-1.5 py-0.5 rounded bg-error-container text-on-error-container">BLOCKING</span>
+<span class="font-body-sm text-body-sm text-secondary">· Germany entity</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface leading-tight">Missing tax ID – Lena Fischer</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">ELStAM verification failed; payroll run cannot be finalized.</p>
+</div>
+<span class="material-symbols-outlined text-error text-[20px] flex-shrink-0">report_problem</span>
+</div>
+<div class="mt-space-md pt-space-xs flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-[14px] text-outline">schedule</span>
+<span class="font-tabular-sm text-tabular-sm font-medium text-error">Deadline: Oct 15</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<div class="relative group/tooltip inline-block" onclick="event.stopPropagation()">
+<button class="w-6 h-6 flex items-center justify-center rounded hover:bg-surface-container text-secondary transition-colors" type="button">
+<span class="material-symbols-outlined text-[16px]">info</span>
+</button>
+<div class="absolute bottom-full right-0 mb-1 hidden group-hover/tooltip:block bg-inverse-surface text-inverse-on-surface text-label-sm font-label-sm rounded py-1 px-2 whitespace-nowrap shadow-md z-20 pointer-events-none">
+                Guided steps coming soon (V3)
+              </div>
+</div>
+<button class="h-7 px-3 bg-primary text-on-primary rounded font-label-md text-label-md hover:bg-on-surface transition-colors flex items-center gap-1 shadow-sm" type="button">
+<span>Take action</span>
+<span class="material-symbols-outlined text-[14px]">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+<div class="group relative cursor-pointer bg-surface-container-lowest p-space-md rounded transition-all shadow-sm hover:shadow-md border-l-4 border-l-transparent hover:bg-surface-container-low" id="item-james" onclick="selectActionItem('james')">
+<div class="flex items-start justify-between gap-space-sm">
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center gap-space-xs">
+<span class="font-label-sm text-label-sm font-semibold uppercase px-1.5 py-0.5 rounded bg-surface-container-high text-on-secondary-container">NEEDS CONFIRMATION</span>
+<span class="font-body-sm text-body-sm text-secondary">· UK entity</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface leading-tight">Salary up 3x – James Patel</h3>
+<p class="font-tabular-sm text-tabular-sm text-secondary">£4,000 → £12,000 base variance detected</p>
+</div>
+<span class="material-symbols-outlined text-secondary text-[20px] flex-shrink-0">trending_up</span>
+</div>
+<div class="mt-space-md pt-space-xs flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-[14px] text-outline">schedule</span>
+<span class="font-tabular-sm text-tabular-sm text-on-surface-variant">Deadline: Oct 15</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<div class="relative group/tooltip inline-block" onclick="event.stopPropagation()">
+<button class="w-6 h-6 flex items-center justify-center rounded hover:bg-surface-container text-secondary transition-colors" type="button">
+<span class="material-symbols-outlined text-[16px]">info</span>
+</button>
+<div class="absolute bottom-full right-0 mb-1 hidden group-hover/tooltip:block bg-inverse-surface text-inverse-on-surface text-label-sm font-label-sm rounded py-1 px-2 whitespace-nowrap shadow-md z-20 pointer-events-none">
+                Guided steps coming soon (V3)
+              </div>
+</div>
+<button class="h-7 px-3 bg-surface-container text-on-surface rounded font-label-md text-label-md hover:bg-surface-container-high transition-colors" type="button">
+              Take action
+            </button>
+</div>
+</div>
+</div>
+<div class="group relative bg-surface-container-lowest p-space-md rounded transition-all shadow-sm hover:shadow-md border-l-4 border-l-transparent hover:bg-surface-container-low">
+<div class="flex items-start justify-between gap-space-sm">
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center gap-space-xs">
+<span class="font-label-sm text-label-sm font-semibold uppercase px-1.5 py-0.5 rounded bg-surface-container-high text-error">DEADLINE RISK</span>
+<span class="font-body-sm text-body-sm text-secondary">· Brazil entity</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface leading-tight">Inputs not submitted (18 employees)</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">eSocial statutory batch requires time and overtime records.</p>
+</div>
+<span class="material-symbols-outlined text-outline text-[20px] flex-shrink-0">pending</span>
+</div>
+<div class="mt-space-md pt-space-xs flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-[14px] text-outline">schedule</span>
+<span class="font-tabular-sm text-tabular-sm text-on-surface-variant">Deadline: Oct 15</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<div class="relative group/tooltip inline-block">
+<button class="w-6 h-6 flex items-center justify-center rounded hover:bg-surface-container text-secondary transition-colors" type="button">
+<span class="material-symbols-outlined text-[16px]">info</span>
+</button>
+<div class="absolute bottom-full right-0 mb-1 hidden group-hover/tooltip:block bg-inverse-surface text-inverse-on-surface text-label-sm font-label-sm rounded py-1 px-2 whitespace-nowrap shadow-md z-20 pointer-events-none">
+                Guided steps coming soon (V3)
+              </div>
+</div>
+<button class="h-7 px-3 bg-surface-container text-on-surface rounded font-label-md text-label-md hover:bg-surface-container-high transition-colors" type="button">
+              Take action
+            </button>
+</div>
+</div>
+</div>
+<div class="group relative bg-surface-container-lowest p-space-md rounded transition-all shadow-sm hover:shadow-md border-l-4 border-l-transparent hover:bg-surface-container-low">
+<div class="flex items-start justify-between gap-space-sm">
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center gap-space-xs">
+<span class="font-label-sm text-label-sm font-semibold uppercase px-1.5 py-0.5 rounded bg-surface-container text-secondary">ACTION NEEDED</span>
+<span class="font-body-sm text-body-sm text-secondary">· India entity</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface leading-tight">Add 2 new joiners</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">PF and UAN details ready for automatic onboarding reconciliation.</p>
+</div>
+<span class="material-symbols-outlined text-outline text-[20px] flex-shrink-0">person_add</span>
+</div>
+<div class="mt-space-md pt-space-xs flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-[14px] text-outline">schedule</span>
+<span class="font-tabular-sm text-tabular-sm text-on-surface-variant">Deadline: Oct 15</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<div class="relative group/tooltip inline-block">
+<button class="w-6 h-6 flex items-center justify-center rounded hover:bg-surface-container text-secondary transition-colors" type="button">
+<span class="material-symbols-outlined text-[16px]">info</span>
+</button>
+<div class="absolute bottom-full right-0 mb-1 hidden group-hover/tooltip:block bg-inverse-surface text-inverse-on-surface text-label-sm font-label-sm rounded py-1 px-2 whitespace-nowrap shadow-md z-20 pointer-events-none">
+                Guided steps coming soon (V3)
+              </div>
+</div>
+<button class="h-7 px-3 bg-surface-container text-on-surface rounded font-label-md text-label-md hover:bg-surface-container-high transition-colors" type="button">
+              Take action
+            </button>
+</div>
+</div>
+</div>
+</div>
+<div class="col-span-12 lg:col-span-7 flex flex-col gap-space-md">
+<div class="bg-surface-container-lowest p-space-sm rounded shadow-sm flex items-center justify-between">
+<div class="flex items-center gap-space-xs bg-surface-container p-0.5 rounded">
+<button class="px-space-md py-1 rounded font-label-md text-label-md bg-surface-container-lowest text-on-surface font-semibold shadow-sm transition-all flex items-center gap-1.5" id="toggle-lena" onclick="selectActionItem('lena')" type="button">
+<span class="w-2 h-2 rounded-full bg-error"></span>
+<span>Lena Fischer (Blocking)</span>
+</button>
+<button class="px-space-md py-1 rounded font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-all flex items-center gap-1.5" id="toggle-james" onclick="selectActionItem('james')" type="button">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+<span>James Patel (Verification)</span>
+</button>
+</div>
+<div class="flex items-center gap-space-xs text-secondary font-label-sm text-label-sm pr-space-sm">
+<span class="material-symbols-outlined text-[16px]">sync_alt</span>
+<span>Dual Ledger Live View</span>
+</div>
+</div>
+<div class="flex flex-col gap-space-md" id="detail-lena">
+<div class="bg-surface-container-lowest p-space-xl rounded shadow-sm relative overflow-hidden">
+<div class="flex items-start justify-between gap-space-md">
+<div class="flex items-center gap-space-md">
+<div class="w-12 h-12 rounded bg-surface-container-high flex items-center justify-center font-headline-md text-headline-md text-on-surface">
+                LF
+              </div>
+<div class="flex flex-col">
+<div class="flex items-center gap-space-xs">
+<h2 class="font-headline-lg text-headline-lg text-on-surface">Lena Fischer</h2>
+<span class="font-label-sm text-label-sm text-secondary bg-surface-container px-2 py-0.5 rounded">EMP-88392</span>
+</div>
+<span class="font-body-md text-body-md text-secondary">Senior Solutions Architect · Germany (Multiplier Legal Entity DE GmbH)</span>
+</div>
+</div>
+<span class="font-label-sm text-label-sm font-semibold uppercase px-2.5 py-1 rounded bg-error-container text-on-error-container flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">lock</span>
+              BLOCKING
+            </span>
+</div>
+<div class="mt-space-lg grid grid-cols-1 md:grid-cols-2 gap-space-md bg-surface-container-low p-space-md rounded">
+<div class="flex flex-col gap-space-xs">
+<span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider">What's wrong</span>
+<p class="font-body-md text-body-md text-on-surface font-medium">
+                Tax ID (<span class="font-headline-sm text-headline-sm">Steuer-ID</span>) is missing in Germany payroll file.
+              </p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Required by Bundeszentralamt für Steuern (BZSt) for statutory withholding bracket assessment.</p>
+</div>
+<div class="flex flex-col gap-space-xs">
+<span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider">System Impact Isolation</span>
+<div class="bg-surface-container-lowest p-space-sm rounded">
+<div class="flex items-center gap-space-xs text-on-surface font-body-md text-body-md font-medium">
+<span class="material-symbols-outlined text-secondary text-[18px]">verified_user</span>
+<span>Only Lena is held.</span>
+</div>
+<p class="font-body-sm text-body-sm text-secondary mt-0.5">
+                  The other 119 employees will be paid on time without cycle disruption.
+                </p>
+</div>
+</div>
+</div>
+<div class="mt-space-md flex flex-wrap items-center justify-between gap-space-md py-space-sm bg-surface-container-lowest">
+<div class="flex items-center gap-space-lg">
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-secondary">Fix by</span>
+<span class="font-tabular-md text-tabular-md text-error font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-[15px]">event</span>
+                  Oct 15, 2026
+                </span>
+</div>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-secondary">Source Origin</span>
+<span class="font-body-md text-body-md text-on-surface flex items-center gap-1 font-medium">
+<span class="material-symbols-outlined text-[16px] text-on-tertiary-container">cloud_sync</span>
+                  From Workday HCM
+                </span>
+</div>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-secondary">Statutory Risk</span>
+<span class="font-body-md text-body-md text-on-surface">Emergency Bracket VI Penalty</span>
+</div>
+</div>
+<div class="flex items-center gap-space-sm">
+<button class="h-8 px-space-md bg-surface-container-high text-on-surface rounded font-label-md text-label-md hover:bg-surface-container transition-colors shadow-sm" type="button">
+                Add here instead
+              </button>
+<button class="h-8 px-space-md bg-primary text-on-primary rounded font-label-md text-label-md hover:bg-on-surface transition-colors flex items-center gap-1.5 shadow-sm" type="button">
+<span>Fix in Workday</span>
+<span class="material-symbols-outlined text-[14px]">open_in_new</span>
+</button>
+</div>
+</div>
+<div class="mt-space-sm pt-space-xs flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-outline flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">auto_mode</span>
+              Auto-sync fix back to Workday – V2
+            </span>
+<span class="font-label-sm text-label-sm text-outline">Audit identifier: TX-DE-2026-991204</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-space-md rounded shadow-sm">
+<div class="flex items-center justify-between mb-space-sm">
+<span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider">Payroll Hold Breakdown</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant font-medium">Run October 2026</span>
+</div>
+<div class="grid grid-cols-3 gap-space-sm">
+<div class="p-space-sm bg-surface-container-low rounded flex flex-col">
+<span class="font-label-sm text-label-sm text-secondary">Gross Salary</span>
+<span class="font-tabular-md text-tabular-md text-on-surface font-semibold">€8,750.00</span>
+<span class="font-body-sm text-body-sm text-secondary mt-1">Ready for disbursement</span>
+</div>
+<div class="p-space-sm bg-surface-container-low rounded flex flex-col">
+<span class="font-label-sm text-label-sm text-secondary">Calculated Net</span>
+<span class="font-tabular-md text-tabular-md text-on-surface font-semibold">€5,120.40</span>
+<span class="font-body-sm text-body-sm text-error mt-1">Pending Steuer-ID</span>
+</div>
+<div class="p-space-sm bg-surface-container-low rounded flex flex-col">
+<span class="font-label-sm text-label-sm text-secondary">Social Security</span>
+<span class="font-tabular-md text-tabular-md text-on-surface font-semibold">€1,835.20</span>
+<span class="font-body-sm text-body-sm text-secondary mt-1">Matched (Techniker KK)</span>
+</div>
+</div>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-space-xl rounded shadow-sm relative overflow-hidden" id="detail-james">
+<div class="flex items-start justify-between gap-space-md">
+<div class="flex items-center gap-space-md">
+<div class="w-12 h-12 rounded bg-surface-container-high flex items-center justify-center font-headline-md text-headline-md text-on-surface">
+              JP
+            </div>
+<div class="flex flex-col">
+<div class="flex items-center gap-space-xs">
+<h2 class="font-headline-lg text-headline-lg text-on-surface">James Patel</h2>
+<span class="font-label-sm text-label-sm text-secondary bg-surface-container px-2 py-0.5 rounded">EMP-10499</span>
+</div>
+<span class="font-body-md text-body-md text-secondary">Product Lead · United Kingdom (Acme Tech UK Ltd)</span>
+</div>
+</div>
+<span class="font-label-sm text-label-sm font-semibold uppercase px-2.5 py-1 rounded bg-surface-container-high text-on-secondary-container flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">help</span>
+            NEEDS CONFIRMATION
+          </span>
+</div>
+<div class="mt-space-lg p-space-md bg-surface-container-low rounded flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider">Salary Variance Analysis</span>
+<span class="font-label-sm text-label-sm font-semibold text-on-surface bg-surface-container-lowest px-2 py-0.5 rounded">300% Shift Detected</span>
+</div>
+<div class="flex items-center gap-space-lg">
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-secondary">Baseline Base Pay</span>
+<span class="font-tabular-lg text-headline-md text-on-surface font-semibold">£4,000.00 / mo</span>
+</div>
+<span class="material-symbols-outlined text-secondary">arrow_forward</span>
+<div class="flex flex-col">
+<span class="font-label-sm text-label-sm text-secondary">Submitted Amount</span>
+<span class="font-tabular-lg text-headline-md text-on-surface font-semibold">£12,000.00 / mo</span>
+</div>
+</div>
+<p class="font-body-md text-body-md text-on-surface mt-space-xs">
+            Likely a one-off bonus entered as base salary. Last 12 months flat at £4,000.
+          </p>
+</div>
+<div class="mt-space-md bg-surface-container-lowest p-space-md rounded">
+<span class="font-label-sm text-label-sm text-secondary uppercase tracking-wider block mb-space-xs">12-Month Historical Trajectory</span>
+<div class="h-16 w-full flex items-end gap-1.5 pt-2">
+<div class="flex-1 bg-surface-container h-6 rounded-t" title="Nov: £4k"></div>
+<div class="flex-1 bg-surface-container h-6 rounded-t" title="Dec: £4k"></div>
+<div class="flex-1 bg-surface-container h-6 rounded-t" title="Jan: £4k"></div>
+<div class="flex-1 bg-surface-container h-6 rounded-t" title="Feb: £4k"></div>
+<div class="flex-1 bg-surface-container h-6 rounded-t" title="Mar: £4k"></div>
+<div class="flex-1 bg-surface-container h-6 rounded-t" title="Apr: £4k"></div>
+<div class="flex-1 bg-surface-container h-6 rounded-t" title="May: £4k"></div>
+<div class="flex-1 bg-surface-container h-6 rounded-t" title="Jun: £4k"></div>
+<div class="flex-1 bg-surface-container h-6 rounded-t" title="Jul: £4k"></div>
+<div class="flex-1 bg-surface-container h-6 rounded-t" title="Aug: £4k"></div>
+<div class="flex-1 bg-surface-container h-6 rounded-t" title="Sep: £4k"></div>
+<div class="flex-1 bg-primary h-16 rounded-t relative group" title="Oct: £12k">
+<span class="absolute -top-6 left-1/2 -translate-x-1/2 font-label-sm text-label-sm text-primary font-bold">3x</span>
+</div>
+</div>
+<div class="flex justify-between text-secondary font-label-sm text-label-sm mt-1">
+<span>Nov 2025 (£4k)</span>
+<span>Sep 2026 (£4k)</span>
+<span class="text-on-surface font-semibold">Oct 2026 (Submitted £12k)</span>
+</div>
+</div>
+<div class="mt-space-lg flex items-center justify-between pt-space-md">
+<div class="flex items-center gap-space-xs text-secondary font-label-sm text-label-sm">
+<span class="material-symbols-outlined text-[15px]">history</span>
+<span>No previous compensation amendments on record</span>
+</div>
+<div class="flex items-center gap-space-sm">
+<button class="h-8 px-space-md bg-surface-container-high text-on-surface rounded font-label-md text-label-md hover:bg-surface-container transition-colors shadow-sm" type="button">
+              Correct the amount
+            </button>
+<button class="h-8 px-space-md bg-primary text-on-primary rounded font-label-md text-label-md hover:bg-on-surface transition-colors shadow-sm" type="button">
+              Yes, this is correct
+            </button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="mt-margin grid grid-cols-1 md:grid-cols-3 gap-gutter">
+<div class="bg-surface-container-lowest p-space-md rounded shadow-sm flex items-start gap-space-sm">
+<div class="w-8 h-8 rounded bg-surface-container flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-[18px]">verified</span>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface">Direct Workday Sync</span>
+<p class="font-body-sm text-body-sm text-secondary mt-0.5">Resolved fields update in upstream Workday instances automatically every 30 minutes.</p>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-space-md rounded shadow-sm flex items-start gap-space-sm">
+<div class="w-8 h-8 rounded bg-surface-container flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-[18px]">shield</span>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface">Strict Payroll Isolation</span>
+<p class="font-body-sm text-body-sm text-secondary mt-0.5">Exceptions do not stall compliant employee files. 119 records proceed uninterrupted.</p>
+</div>
+</div>
+<div class="bg-surface-container-lowest p-space-md rounded shadow-sm flex items-start gap-space-sm">
+<div class="w-8 h-8 rounded bg-surface-container flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-[18px]">support_agent</span>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm text-on-surface">Statutory Audit Safety</span>
+<p class="font-body-sm text-body-sm text-secondary mt-0.5">Multiplier local in-country partners review tax overrides prior to local tax filings.</p>
+</div>
+</div>
+</div>
+</div>
+<script>
+  function selectActionItem(item) {
+    const detailLena = document.getElementById('detail-lena');
+    const detailJames = document.getElementById('detail-james');
+    const itemLena = document.getElementById('item-lena');
+    const itemJames = document.getElementById('item-james');
+    const toggleLena = document.getElementById('toggle-lena');
+    const toggleJames = document.getElementById('toggle-james');
+
+    if (item === 'lena') {
+      detailLena.classList.remove('hidden');
+      detailJames.classList.remove('hidden');
+      detailLena.style.display = 'flex';
+      
+      itemLena.classList.add('border-l-error', 'bg-surface-container-low');
+      itemLena.classList.remove('border-l-transparent');
+      
+      itemJames.classList.remove('border-l-primary', 'bg-surface-container-low');
+      itemJames.classList.add('border-l-transparent');
+
+      toggleLena.className = 'px-space-md py-1 rounded font-label-md text-label-md bg-surface-container-lowest text-on-surface font-semibold shadow-sm transition-all flex items-center gap-1.5';
+      toggleJames.className = 'px-space-md py-1 rounded font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-all flex items-center gap-1.5';
+      
+      detailLena.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } else if (item === 'james') {
+      itemJames.classList.add('border-l-primary', 'bg-surface-container-low');
+      itemJames.classList.remove('border-l-transparent');
+      
+      itemLena.classList.remove('border-l-error', 'bg-surface-container-low');
+      itemLena.classList.add('border-l-transparent');
+
+      toggleJames.className = 'px-space-md py-1 rounded font-label-md text-label-md bg-surface-container-lowest text-on-surface font-semibold shadow-sm transition-all flex items-center gap-1.5';
+      toggleLena.className = 'px-space-md py-1 rounded font-label-md text-label-md text-on-surface-variant hover:text-on-surface transition-all flex items-center gap-1.5';
+      
+      detailJames.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }
+</script></div></div></main></div></body></html>

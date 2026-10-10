@@ -1,0 +1,67 @@
+@import 'tailwindcss';
+
+/*
+  Design tokens from stitch DESIGN.md + context.md brand blue #1D4ED8
+*/
+
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+
+  --color-canvas: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-recessed: #f1f5f9;
+  --color-border: #e2e8f0;
+  --color-border-active: #cbd5e1;
+
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+  --color-text-muted: #64748b;
+
+  --color-brand: #1d4ed8;
+  --color-brand-hover: #1e40af;
+
+  /* Sampled from public/favicon.svg Multiplier icon */
+  --color-multiplier-brand: #863bff;
+  --multiplier-brand: #863bff;
+
+  --color-status-ok-bg: #ecfdf5;
+  --color-status-ok-border: #a7f3d0;
+  --color-status-ok-text: #065f46;
+
+  --color-status-warn-bg: #fffbeb;
+  --color-status-warn-border: #fde68a;
+  --color-status-warn-text: #92400e;
+
+  --color-status-danger-bg: #fff1f2;
+  --color-status-danger-border: #fecdd3;
+  --color-status-danger-text: #9f1239;
+
+  --color-status-info-bg: #f0f9ff;
+  --color-status-info-border: #bae6fd;
+  --color-status-info-text: #075985;
+
+  --radius-sm: 0.125rem;
+  --radius-DEFAULT: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    background: var(--color-canvas);
+    color: var(--color-text-primary);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}

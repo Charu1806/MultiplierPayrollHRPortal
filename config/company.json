@@ -1,0 +1,19 @@
+{
+  "id": "cust_acme",
+  "name": "Acme Tech",
+  "logoInitials": "AT",
+  "logoBg": "#0f172a",
+  "logoFg": "#ffffff",
+  "workspaceSubtitle": "HR workspace",
+  "hrTool": "Workday",
+  "syncCaption": "Synced from Workday",
+  "syncAgoMinutes": 12,
+  "payrollCaption": "Powered by Multiplier",
+  "multiplierBrandColor": "#863bff",
+  "admin": {
+    "name": "Maya Rao",
+    "role": "HR admin",
+    "initials": "MR"
+  },
+  "prototypeBar": "Prototype · Acme Tech's HR workspace (employee data synced from Workday) with Multiplier Payroll embedded"
+}

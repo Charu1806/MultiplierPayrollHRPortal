@@ -1,0 +1,15 @@
+{
+  "id": "cust_northwind",
+  "name": "Northwind Labs",
+  "logoInitials": "NL",
+  "logoBg": "#0f766e",
+  "logoFg": "#ffffff",
+  "workspaceSubtitle": "Northwind Labs workspace",
+  "hrTool": "BambooHR",
+  "syncCaption": "Synced from BambooHR",
+  "syncAgoMinutes": 12,
+  "payrollCaption": "Powered by Multiplier",
+  "multiplierBrandColor": "#863bff",
+  "admin": { "name": "Sam Lee", "role": "HR admin", "initials": "SL" },
+  "prototypeBar": "Prototype date"
+}

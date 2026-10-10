@@ -1,0 +1,31 @@
+{
+  "employees": [
+    {
+      "id": "emp_alex", "name": "Alex Morgan", "role": "Engineer", "country": "UK",
+      "septemberPay": 4500, "baseSalary": 4500, "missing": ["NI number"],
+      "workEmail": "alex.morgan@northwind.example", "manager": "Sam Lee", "hireDate": "2022-01-10",
+      "notes": "Missing NI"
+    },
+    {
+      "id": "emp_greta", "name": "Greta Klein", "role": "Designer", "country": "Germany",
+      "septemberPay": 3900, "baseSalary": 3900, "missing": ["Tax ID"],
+      "workEmail": "greta.klein@northwind.example", "manager": "Sam Lee", "hireDate": "2023-05-01",
+      "notes": "Missing Tax ID"
+    },
+    {
+      "id": "emp_rio", "name": "Rio Alves", "role": "Analyst", "country": "Brazil",
+      "septemberPay": 12000, "baseSalary": 18000, "missing": [],
+      "workEmail": "rio.alves@northwind.example", "manager": "Sam Lee", "hireDate": "2021-09-01",
+      "changedThisCycle": true, "notes": "Bonus spike needs confirmation"
+    }
+  ],
+  "issues": [],
+  "reviewLines": [],
+  "emails": [],
+  "demoValues": {
+    "emp_alex": { "NI number": "QQ123456C" },
+    "emp_greta": { "Tax ID": "12345678901" }
+  },
+  "documents": [],
+  "generateRoster": true
+}

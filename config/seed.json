@@ -1,0 +1,171 @@
+{
+  "employees": [
+    {
+      "id": "emp_lena", "name": "Lena Fischer", "role": "Senior Product Designer", "country": "Germany",
+      "septemberPay": 4200, "baseSalary": 4200, "missing": ["Tax ID"],
+      "workEmail": "lena.fischer@acmetech.example", "manager": "Nora Weiss", "hireDate": "2023-03-01",
+      "notes": "Missing tax ID — blocking issue"
+    },
+    {
+      "id": "emp_james", "name": "James Patel", "role": "Staff Backend Engineer", "country": "UK",
+      "septemberPay": 4000, "baseSalary": 12000, "missing": [],
+      "workEmail": "james.patel@acmetech.example", "manager": "Sarah Okonkwo", "hireDate": "2021-06-14",
+      "changedThisCycle": true, "notes": "Base captured as £12,000 from Workday — needs confirmation"
+    },
+    {
+      "id": "emp_beatriz", "name": "Beatriz Costa", "role": "Software Engineer", "country": "Brazil",
+      "septemberPay": 14000, "baseSalary": 14000, "missing": ["CPF"],
+      "workEmail": "beatriz.costa@acmetech.example", "manager": "Camila Rocha", "hireDate": "2024-09-02",
+      "notes": "Missing CPF — blocking issue"
+    },
+    {
+      "id": "emp_thiago", "name": "Thiago Santos", "role": "Solutions Architect", "country": "Brazil",
+      "septemberPay": 18500, "baseSalary": 18500, "missing": [],
+      "workEmail": "thiago.santos@acmetech.example", "manager": "Camila Rocha", "hireDate": "2022-02-21",
+      "changedThisCycle": true, "notes": "Vacation pay + 1/3 bonus (férias) in review"
+    },
+    {
+      "id": "emp_ananya", "name": "Ananya Rao", "role": "Senior Frontend Engineer", "country": "India",
+      "septemberPay": 120000, "baseSalary": 135000, "missing": [],
+      "workEmail": "ananya.rao@acmetech.example", "manager": "Vikram Iyer", "hireDate": "2021-11-08",
+      "changedThisCycle": true, "notes": "Raise above 10% in review"
+    },
+    {
+      "id": "emp_david", "name": "David Müller", "role": "Data Engineer", "country": "Germany",
+      "septemberPay": 4800, "baseSalary": 4800, "missing": [],
+      "workEmail": "david.mueller@acmetech.example", "manager": "Nora Weiss", "hireDate": "2022-08-15",
+      "notes": "On track"
+    },
+    {
+      "id": "emp_rajesh", "name": "Rajesh Sharma", "role": "QA Lead", "country": "India",
+      "septemberPay": 95000, "baseSalary": 95000, "missing": [],
+      "workEmail": "rajesh.sharma@acmetech.example", "manager": "Vikram Iyer", "hireDate": "2020-04-01",
+      "changedThisCycle": true, "notes": "Arrears for September in review"
+    },
+    {
+      "id": "emp_chloe", "name": "Chloe Dubois", "role": "Product Ops Lead", "country": "UK",
+      "septemberPay": 3600, "baseSalary": 2150, "missing": [],
+      "workEmail": "chloe.dubois@acmetech.example", "manager": "Sarah Okonkwo", "hireDate": "2022-01-10",
+      "changedThisCycle": true, "notes": "Maternity leave: statutory pay in review"
+    },
+    {
+      "id": "emp_mateo", "name": "Mateo Silva", "role": "Infrastructure Engineer", "country": "Brazil",
+      "septemberPay": 16000, "baseSalary": 16000, "unpaidLeaveDays": 5, "missing": [],
+      "workEmail": "mateo.silva@acmetech.example", "manager": "Camila Rocha", "hireDate": "2023-05-22",
+      "changedThisCycle": true, "notes": "5 days unpaid leave in review"
+    }
+  ],
+  "oneTimePayments": [
+    { "id": "otp_thiago_ferias", "employeeId": "emp_thiago", "type": "Other", "label": "Vacation pay + 1/3 bonus (férias)", "amount": 6170, "recordedOn": "2026-10-09", "source": "Workday" },
+    { "id": "otp_rajesh_arrears", "employeeId": "emp_rajesh", "type": "Arrears", "label": "Arrears for September", "amount": 22000, "recordedOn": "2026-10-09", "source": "Workday" }
+  ],
+  "reconciledFillers": {
+    "count": 32,
+    "sources": ["Workday comp change", "Leave record in Workday", "HMRC rate table", "Statutory rate table", "Workday allowance update"]
+  },
+  "issues": [
+    {
+      "id": "issue_001", "kind": "missing_fields", "title": "Missing tax ID", "severity": "blocking", "employeeId": "emp_lena", "country": "Germany",
+      "owner": "HR admin", "deadline": "2026-10-15", "source": "From Workday",
+      "impact": "Only Lena is held. The other employees will be paid on time.",
+      "detail": "Lena Fischer is missing the Tax ID (Steuer-ID) required for Germany payroll."
+    },
+    {
+      "id": "issue_002", "kind": "pay_confirmation", "title": "Salary up 3x", "severity": "needs_confirmation", "employeeId": "emp_james", "country": "UK",
+      "owner": "HR admin", "deadline": "2026-10-15", "source": "From Workday",
+      "impact": "James Patel compensation changed £4,000 → £12,000 and needs confirmation before pay.",
+      "detail": "£4,000 → £12,000 base captured from Workday.",
+      "aiNote": "Likely a one-off bonus entered as base salary. Last 12 months flat at £4,000."
+    },
+    {
+      "id": "issue_003", "kind": "missing_fields", "title": "Missing CPF", "severity": "blocking", "employeeId": "emp_beatriz", "country": "Brazil",
+      "owner": "HR admin", "deadline": "2026-10-15", "source": "From Workday",
+      "impact": "Only Beatriz is held. The other employees will be paid on time.",
+      "detail": "Beatriz Costa is missing the CPF required for Brazil payroll."
+    }
+  ],
+  "reminders": [
+    { "id": "rem_001", "title": "Review & approve", "deadline": "2026-10-22", "owner": "HR admin" },
+    { "id": "rem_002", "title": "Funding due", "deadline": "2026-10-23", "owner": "Finance" }
+  ],
+  "demoValues": {
+    "emp_lena": { "Tax ID": "12 345 678 903" },
+    "emp_beatriz": { "CPF": "123.456.789-09" },
+    "emp_priya_nair": { "PAN": "BNZPN4821K", "Bank account": "50100234567812", "IFSC": "HDFC0000123", "Manager": "Ananya Rao" }
+  },
+  "documents": [
+    {
+      "id": "doc_priya", "filename": "offer_letter_priya.pdf", "docType": "offer", "targetName": "Priya Nair", "country": "India",
+      "role": "Software Engineer", "startDate": "2026-10-20", "annualGross": 1800000, "currency": "₹", "monthlyBase": 150000,
+      "allFieldsOk": false, "notes": "Attach on Oct 13 demo; missing PAN and bank.",
+      "mappings": [
+        ["HR tool", "Legal name", "Employee name", "Priya Nair", "mapped", null],
+        ["HR tool", "Work location", "Country", "India", "mapped", null],
+        ["HR tool", "Hire date", "Start date", "Oct 20, 2026", "mapped", null],
+        ["Offer letter", "Annual CTC", "Annual gross salary", "₹18,00,000", "mapped", "High"],
+        ["Offer letter", "Designation", "Job title", "Software Engineer", "mapped", "High"],
+        [null, null, "PAN", "Not found", "missing", "Required for India"],
+        [null, null, "Bank account", "Not found", "missing", "Required"]
+      ]
+    },
+    {
+      "id": "doc_arjun", "filename": "offer_letter_arjun.pdf", "docType": "offer", "targetName": "Arjun Mehta", "country": "India",
+      "role": "Data Analyst", "startDate": "2026-10-27", "annualGross": 1200000, "currency": "₹", "monthlyBase": 100000,
+      "allFieldsOk": true, "notes": "Attach on Oct 17 demo; all required fields present; after cutoff.",
+      "mappings": [
+        ["HR tool", "Legal name", "Employee name", "Arjun Mehta", "mapped", null],
+        ["HR tool", "Work location", "Country", "India", "mapped", null],
+        ["HR tool", "Hire date", "Start date", "Oct 27, 2026", "mapped", null],
+        ["Offer letter", "Annual CTC", "Annual gross salary", "₹12,00,000", "mapped", "High"],
+        ["Offer letter", "Designation", "Job title", "Data Analyst", "mapped", "High"],
+        ["Offer letter", "PAN", "PAN", "ABCDE1234F", "mapped", "High"],
+        ["Offer letter", "Bank account", "Bank account", "50100987654321", "mapped", "High"]
+      ]
+    },
+    {
+      "id": "doc_james_bonus", "filename": "bonus_letter_james.pdf", "docType": "bonus", "targetName": "James Patel", "country": "UK",
+      "role": "Staff Backend Engineer", "currency": "£", "bonusAmount": 8000, "allFieldsOk": true, "resolvesIssueId": "issue_002",
+      "notes": "One-off performance bonus £8,000 · October 2026. Resolves salary 3x issue.",
+      "mappings": [
+        ["Bonus letter", "Employee", "Employee name", "James Patel", "mapped", "High"],
+        ["Bonus letter", "Amount", "One-off bonus", "£8,000", "mapped", "High"],
+        ["Bonus letter", "Pay month", "Cycle", "October 2026", "mapped", "High"],
+        ["Bonus letter", "Type", "Payment type", "Performance bonus (one-off)", "mapped", "High"]
+      ]
+    },
+    {
+      "id": "doc_chloe_travel", "filename": "travel_reimbursement_chloe.pdf", "docType": "reimbursement", "targetName": "Chloe Dubois", "country": "UK",
+      "role": "Product Ops Lead", "currency": "£", "bonusAmount": 640, "allFieldsOk": true,
+      "notes": "Client travel reimbursement £640 for Chloe Dubois (UK).",
+      "mappings": [
+        ["Expense claim", "Employee", "Employee name", "Chloe Dubois", "mapped", "High"],
+        ["Expense claim", "Amount", "Travel reimbursement", "£640", "mapped", "High"],
+        ["Expense claim", "Type", "Payment type", "Client travel reimbursement", "mapped", "High"],
+        ["Expense claim", "Country", "Country", "UK", "mapped", "High"]
+      ]
+    }
+  ],
+  "reviewLines": [
+    { "id": "rev_001", "employeeId": "emp_james", "change": "£4,000 → £12,000", "why": "Spike > 50%", "matchingSource": "Workday comp change, awaiting confirmation", "matchingSourceResolved": "Bonus letter, one-off £8,000", "linkedIssueId": "issue_002" },
+    { "id": "rev_002", "employeeId": "emp_ananya", "change": "₹1,20,000 → ₹1,35,000", "why": "Raise above 10%", "matchingSource": "No matching approval found" },
+    { "id": "rev_003", "employeeId": "emp_chloe", "change": "£3,600 → £2,150", "why": "Maternity leave: statutory pay", "matchingSource": "HMRC rate table" },
+    { "id": "rev_004", "employeeId": "emp_mateo", "change": "R$16,000 → R$13,333", "why": "5 days unpaid leave", "matchingSource": "Leave record in Workday" },
+    { "id": "rev_005", "employeeId": "emp_thiago", "change": "R$18,500 → R$24,670", "why": "Vacation pay + 1/3 bonus (férias)", "matchingSource": "Leave record in Workday" },
+    { "id": "rev_006", "employeeId": "emp_rajesh", "change": "₹95,000 → ₹1,17,000", "why": "Arrears ₹22,000 for September", "matchingSource": "No matching approval found" }
+  ],
+  "emailTemplates": [
+    { "id": "notif_oct12", "date": "2026-10-12", "recipient": "HR admin", "kind": "actions_open", "subject": "{days} days to input finalisation: {n} actions", "summary": "Grouped reminder of open actions before Oct 15." },
+    { "id": "notif_oct14", "date": "2026-10-14", "recipient": "HR admin", "kind": "blocking_open", "subject": "Cutoff tomorrow: {n} blocking item{s}", "summary": "Escalation approaching input finalisation." },
+    { "id": "notif_oct15", "date": "2026-10-15", "recipient": "HR admin", "kind": "actions_open", "subject": "Cutoff today: {n} items still open", "summary": "Anything still missing at end of day moves to November." },
+    { "id": "notif_oct16", "date": "2026-10-16", "recipient": "HR admin", "kind": "inputs_locked", "subject": "Inputs locked – review opens Oct 17", "summary": "Multiplier is calculating pay. Anyone still missing data moves to November." },
+    { "id": "notif_oct17", "date": "2026-10-17", "recipient": "HR admin", "kind": "review_open", "subject": "Payroll ready for review: {n} lines need your check · approve by Oct 22", "summary": "Review window is open. Approve lines and sign off by Oct 22." },
+    { "id": "notif_oct20", "date": "2026-10-20", "recipient": "HR admin", "kind": "review_reminder", "subject": "Reminder: 2 days left to review · {n} lines still open", "summary": "Sign off before the review window closes on Oct 22." },
+    { "id": "notif_oct22_hr", "date": "2026-10-22", "recipient": "HR admin", "kind": "review_closes_today", "subject": "Review closes today · {n} lines still open", "summary": "Approve remaining lines and sign off today." },
+    { "id": "notif_oct22_finance", "date": "2026-10-22", "recipient": "Finance", "kind": "funding_due", "subject": "Funding due Oct 23", "summary": "Add funds against the payroll invoice." },
+    { "id": "notif_oct23_signed", "date": "2026-10-23", "recipient": "HR admin", "kind": "signed_off_funding", "subject": "Payroll signed off – funding in progress", "summary": "October payroll was signed off; funding is due." },
+    { "id": "notif_oct23_unsigned", "date": "2026-10-23", "recipient": "HR admin", "kind": "closed_without_signoff", "subject": "Review closed without sign-off · {n} changes moved to November", "summary": "Unapproved changes were not applied; paid at September amounts." },
+    { "id": "notif_oct28", "date": "2026-10-28", "recipient": "HR admin", "kind": "paid", "subject": "October payroll paid: {on_time} on time, {moved} moved to November", "summary": "Pay date Oct 28 outcome." },
+    { "id": "notif_nov01", "date": "2026-11-01", "recipient": "HR admin", "kind": "november_open", "subject": "November cycle open · {n} carried over from October · fix by Nov 15", "summary": "Carry-overs from October need data by Nov 15." },
+    { "id": "notif_nov17", "date": "2026-11-17", "recipient": "HR admin", "kind": "november_review_open", "subject": "November review open · {n} lines (incl. {from_oct} from October) · approve by Nov 22", "summary": "November review window is open." }
+  ]
+}

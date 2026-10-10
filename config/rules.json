@@ -1,0 +1,67 @@
+{
+  "taxRates": { "India": 0.1, "UK": 0.2, "Germany": 0.25, "Brazil": 0.15 },
+  "aiCheck": { "upThreshold": 0.5, "downThreshold": 0.3 },
+  "raiseWithoutSourceThreshold": 0.1,
+  "requiredFieldsByCountry": {
+    "India": [
+      { "field": "PAN", "owner": "employee" },
+      { "field": "Bank account", "owner": "employee" },
+      { "field": "IFSC", "owner": "employee" },
+      { "field": "Manager", "owner": "hr" },
+      { "field": "Start date", "owner": "hr" },
+      { "field": "Salary", "owner": "hr" }
+    ],
+    "UK": [
+      { "field": "NI number", "owner": "employee" },
+      { "field": "Sort code", "owner": "employee" },
+      { "field": "Bank account", "owner": "employee" },
+      { "field": "Manager", "owner": "hr" },
+      { "field": "Start date", "owner": "hr" },
+      { "field": "Salary", "owner": "hr" }
+    ],
+    "Germany": [
+      { "field": "Tax ID", "owner": "employee" },
+      { "field": "IBAN", "owner": "employee" },
+      { "field": "Tax class", "owner": "employee" },
+      { "field": "Manager", "owner": "hr" },
+      { "field": "Start date", "owner": "hr" },
+      { "field": "Salary", "owner": "hr" }
+    ],
+    "Brazil": [
+      { "field": "CPF", "owner": "employee" },
+      { "field": "Bank account", "owner": "employee" },
+      { "field": "PIX key", "owner": "employee" },
+      { "field": "Manager", "owner": "hr" },
+      { "field": "Start date", "owner": "hr" },
+      { "field": "Salary", "owner": "hr" }
+    ]
+  },
+  "requiredFields": {
+    "India": ["PAN", "Bank account", "IFSC"],
+    "Germany": ["Tax ID", "IBAN"],
+    "Brazil": ["CPF", "Bank account"],
+    "UK": ["NI number", "Sort code", "Bank account"]
+  },
+  "employeeOwnedFields": [
+    "PAN", "Tax ID", "CPF", "Bank account", "IFSC", "NI number",
+    "Sort code", "IBAN", "Tax class", "PIX key"
+  ],
+  "hrOwnedFields": ["Manager", "Start date", "Salary"],
+  "fieldFormats": {
+    "PAN": { "pattern": "^[A-Za-z]{5}[0-9]{4}[A-Za-z]$", "hint": "5 letters, 4 digits, 1 letter", "strip": "\\s" },
+    "CPF": { "pattern": "^[0-9]{11}$", "hint": "11 digits", "strip": "[.\\-\\s]" },
+    "Tax ID": { "pattern": "^[0-9]{11}$", "hint": "11 digits (Steuer-ID)", "strip": "\\s" },
+    "Bank account": { "pattern": "^[0-9]{8,18}$", "hint": "8–18 digits", "strip": "\\s" },
+    "IFSC": { "pattern": "^[A-Za-z]{4}0[A-Za-z0-9]{6}$", "hint": "e.g. HDFC0000123", "strip": "\\s" },
+    "NI number": { "pattern": "^[A-Za-z]{2}[0-9]{6}[A-Za-z]$", "hint": "2 letters, 6 digits, 1 letter", "strip": "\\s" },
+    "Sort code": { "pattern": "^[0-9]{6}$", "hint": "6 digits", "strip": "[\\-\\s]" },
+    "IBAN": { "pattern": "^[A-Za-z]{2}[0-9]{2}[A-Za-z0-9]{11,30}$", "hint": "Country code + check digits + account", "strip": "\\s" },
+    "PIX key": { "pattern": "^.{3,}$", "hint": "Email, phone, CPF or random key", "strip": "" },
+    "Tax class": { "pattern": "^[1-6]$", "hint": "1–6", "strip": "\\s" },
+    "Manager": { "pattern": "^.{2,}$", "hint": "Manager name", "strip": "" }
+  },
+  "daysInMonth": 30,
+  "oneTimePaymentTypes": ["Bonus", "Reimbursement", "Arrears", "Other"],
+  "extractionTimeoutSeconds": 8,
+  "documentTypes": ["offer", "bonus", "reimbursement", "exit", "salary_revision"]
+}

@@ -1,0 +1,41 @@
+{
+  "name": "multiplier-payroll-clarity",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"python3 -m server.app\" \"vite\"",
+    "dev:web": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "check:dates": "python3 scripts/check_dates.py",
+    "check:hardcoding": "python3 scripts/check_hardcoding.py",
+    "test:api": "python3 -m pytest tests/ -q",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test": "npm run check:dates && npm run check:hardcoding && npm run test:api && npm run test:unit && npm run test:e2e"
+  },
+  "dependencies": {
+    "lucide-react": "^1.53.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.18.4",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "concurrently": "^9.2.5",
+    "oxlint": "^1.81.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.3"
+  }
+}
