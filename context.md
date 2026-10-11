@@ -1,6 +1,6 @@
 # Payroll Clarity – Prototype Context
 
-Context for building a clickable prototype in Cursor. **This file is the single source of truth** for names, numbers, dates, text, screens and rules. Read this first, then `architecture.md` for the service/API design and `DESIGN.md` for all visual styling. If code and this file disagree, this file wins.
+Context for building a clickable prototype in Cursor. **This file is the single source of truth** for names, numbers, dates, text, screens and rules. Read this first, then `PRD.md` for the product requirements of the working prototype, `ROADMAP.md` for what is done, `architecture.md` for the service/API design and `DESIGN.md` for visual styling. If code and this file disagree, this file wins.
 
 ## 1. What this is
 
@@ -282,7 +282,7 @@ Documents are added via **Use demo file**, **Upload from computer**, or **Choose
 | Thiago Santos (BR) | R$18,500 → R$24,670 | Vacation pay + 1/3 bonus (férias) | Leave record in Workday |
 | Rajesh Sharma (IN) | ₹95,000 → ₹1,17,000 | Arrears ₹22,000 for September | No matching approval found |
 
-Top numbers: **38 changed lines · 32 matched to a source · 6 need your check.** They are computed: 38 employees are flagged "changed this cycle", 32 of them carry a matched source, 6 need a human check. Edits made by the HR admin add lines ("Edited by you – needs approval").
+Top numbers start at **38 changed lines · 32 matched to a source · 6 need your check.** They are computed, never a fixed total: changed employees with a matched source, plus every approved review line, count as matched. Need your check is the rest. The three cards always add up. Approving a line in the table moves that person into Matched and drops Need your check. A changed flag with no pay difference and no review line is not counted. The footer ("4 of 6 lines approved") counts only the rows in the table. Edits made by the HR admin add lines ("Edited by you – needs approval"). A salary confirmed from the employee profile during an open review stays on that review, is marked approved, and increases Matched.
 
 ### Seed: notifications (email only; Slack is a V2 stub)
 
@@ -290,10 +290,10 @@ Computed from state; only send what applies. Remove the old "Oct 20 – Payroll 
 
 | Date | To | Subject | Condition | Button |
 |---|---|---|---|---|
-| Oct 12 | HR admin | 3 days to input finalisation: N actions | Always (before cutoff) | Open Action needed |
+| Oct 12 | HR admin | 3 days left to add payroll inputs | Always (before cutoff) | Open Action needed |
 | Oct 13 | Employee | Add your details… | Only if reminder sent | Add my details |
-| Oct 14 | HR admin | Cutoff tomorrow: N blocking | Before cutoff | Open Action needed |
-| Oct 15 | HR admin | Cutoff today: N items still open | Before/on cutoff | Open Action needed |
+| Oct 14 | HR admin | Cutoff tomorrow for adding payroll inputs | Before cutoff | Open Action needed |
+| Oct 15 | HR admin | Cutoff today for adding payroll inputs | Before/on cutoff | Open Action needed |
 | Oct 16 | HR admin | Inputs locked – review opens Oct 17 | Always; lists anyone moved to November | Open Overview |
 | **Oct 17** | HR admin | **Payroll ready for review: N lines need your check · approve by Oct 22** | Always | Open Review & approve |
 | Oct 20 | HR admin | Reminder: 2 days left to review · N lines still open | Only if not signed off | Open Review & approve |
@@ -307,7 +307,11 @@ Computed from state; only send what applies. Remove the old "Oct 20 – Payroll 
 
 Sign-off also sends an in-app confirmation (and SMTP email if configured): "You signed off October payroll at HH:MM". Reminder emails stop once signed off.
 
-**Employee reminder emails** (e.g. Lena tax ID): no raw URLs in the body — inline hyperlink "add your details here" + button "Add my details →" to the same form. Deadline from current cycle config. Carried-over subject: "Add your tax ID for payroll – missed October pay". Body ends with "Your details go straight to payroll; you don't need to reply to this email." Block renamed "What we need" with field + reason. SMTP failure is an amber **system banner** above the email in Notifications, not inside the email body.
+**Input-deadline emails (Oct 12, 14 and 15)** do not list every open issue. The subject is the deadline for adding payroll inputs. The body says payroll inputs close on 15 October, and that unresolved actions, or a new employee, salary change, or bonus not added by then, may move all or part of that employee's pay to the next cycle. **What to do** is one step, "Resolve actions in Action needed", linking to Action needed. A **Payroll input policy** link opens a demo page (`/payroll/input-policy`); it does not change pay.
+
+Inbox order is newest first, including mail sent on the same day (`created_at`). Unread rows are numbered 1, 2, 3 from the top. The inbox and the Notifications nav badge show "N unread messages". Opening a message marks it read. Read state is stored and survives refresh. Reset demo clears it.
+
+**Employee reminder emails** (e.g. Lena tax ID): no raw URLs in the body — inline hyperlink "add your details here" + one button **Add my details** (a single arrow icon, not a second arrow in the label) to the same form. Deadline from current cycle config. Carried-over subject: "Add your tax ID for payroll – missed October pay". Body ends with "Your details go straight to payroll; you don't need to reply to this email." Block renamed "What we need" with field + reason. SMTP failure is an amber **system banner** above the email in Notifications, not inside the email body.
 
 ## 7. Screens
 
@@ -328,6 +332,7 @@ Missing-data items **never** appear in Review & approve. Review shows: "**N empl
 - **Overview:** never.
 - **Action needed:** open-issue count (after cutoff: November items only).
 - **Review & approve:** while the review window is open (Oct 17–22 or Nov 17–22), badge = lines still needing approval (need your check + edited by you + reopened). Count drops as lines are approved. **No badge** after sign-off or when the window is closed.
+- **Notifications:** unread email count. Drops when a message is opened.
 
 ### Screen 1 – Overview (`/payroll/overview`)
 
@@ -353,8 +358,8 @@ Missing-data items **never** appear in Review & approve. Review shows: "**N empl
   1. Primary fix (e.g. "Split into base + bonus") — black — confirmation modal with pre-filled split + optional document.
   2. Secondary "{amount} is correct" — white border — required reason (Promotion · Role change · Retention / market correction · Contract correction · Other) + optional document → resolves; Review line becomes matched ("HR confirmation").
   3. Text link "Open salary structure" → employee profile. Remove separate "Correct the amount".
-- David Müller (from Oct 29): "Payment returned – update bank details" (employee-owned), deadline Nov 15.
-- From Nov 1: carried-over missing-data items with text "Missed October pay. Fix by Nov 15 to pay October + November together."
+- David Müller (from Oct 29): "Payment returned – update bank details". This is a bank return after October pay, not a missed October input, and it is not tagged Carried over. Deadline Nov 15. Saving the new bank account resolves the issue and removes it from Action needed. It stays visible on earlier dates, before the account was saved.
+- From Nov 1: carried-over missing-data items (for example Lena's tax ID) say "Missed October pay. November pay at risk." A bank return does not use that sentence.
 
 ### Screen 3 – All employees (`/people`)
 
@@ -369,14 +374,14 @@ Missing-data items **never** appear in Review & approve. Review shows: "**N empl
 
 **Open (Oct 17–22 / Nov 17–22):** Header with closes date + days left. Numbers, approve, sign-off, not-in-run line, "Review any other employee". Nav badge = remaining need-check count.
 
-**Closed October (Oct 23–31 only, or via October summary):** Read-only, greyed rows (slate-400). Badge "Moved to November review" + "Next approval: Nov 17–22" (from next cycle config). "View employee" text link (not black button). Header: "Review closed Oct 22 · not signed off · next review opens Nov 17". Red per-employee banner (arrears vs recovery — § unsigned outcomes). Top numbers stay, grey, label "Final October numbers". Remove not-in-run and "Review any other employee". From **Nov 1** the Review page shows **November**, not this closed October view.
+**Closed October (Oct 23–31 only, or via October summary):** Read-only, greyed rows (slate-400). Badge "Moved to November review" + "Next approval: Nov 17–22" (from next cycle config). "View employee" text link (not black button). Header: "Review closed Oct 22 · not signed off · next review opens Nov 17". The warning lists only lines that are still unapproved. Top numbers stay live, grey, label "Final October numbers". Remove not-in-run and "Review any other employee". From **Nov 1** the Review page shows **November**, not this closed October view.
 
-**Unsigned → November lines:** James/Ananya/Rajesh/Thiago = arrears; Chloe/Mateo = recovery (amounts in § round 5 outcomes). Tag "From October review (not signed off)". Recoveries need approval + "Employee notified" checkbox.
+**Unsigned → November lines:** each unapproved October line carries the live difference between last approved pay and this cycle (salary, allowances, one-time payments, unpaid leave). Underpaid becomes arrears; overpaid becomes a deductible. Seed starting amounts are James +£8,000, Ananya +₹15,000, Rajesh +₹22,000, Thiago +R$6,170, Chloe –£1,450, Mateo –R$2,667. Editing pay before sign-off changes the amount that carries. Approving a line removes that person from the warning and from the November carry. Tag "From October review (not signed off)". Recoveries need approval + "Employee notified" checkbox.
 
 ### Screen 5 – Notifications (`/payroll/notifications`)
 
 - Tab switch: **Email** | **Slack** (V2 stub).
-- Left: inbox, newest first. Right: selected email + CTA per §6 notifications (Open Action needed / Open Review & approve / Overview / Add my details).
+- Left: inbox, newest first, with unread count and numbers 1, 2, 3 on unread rows. Right: selected email + CTA per §6 notifications (Open Action needed / Open Review & approve / Overview / Add my details). Opening a message marks it read.
 
 ### Attachments (Add employee, Employee profile, One-time payment, Record exit)
 
@@ -402,6 +407,7 @@ Add the document:
 
 ### Screen B – Employee profile (`/people/:id`)
 
+- A pay banner under the header states whether this person, a bonus, and a salary change will be paid, and in which cycle. Missing required fields hold the person. A bank return has its own sentence.
 - Editable fields; Payroll panel: Data journey · Salary structure · One-time payments · Pay status · Actions.
 - **Add one-time payment** → `/people/:id/one-time-payment`: Type → attach document → fields **pre-filled from document** (editable) → **Confirm** modal ("Add £8,000 bonus for James Patel to October pay?") → `POST /api/employees/:id/one-time-payments` → toast → salary structure + OTP list update, tax/net recalculate, Review line "One-time payment – needs approval" with document (or "No supporting document"). Timing: ≤ Oct 15 → October; after → November (stated in confirmation).
 - **Record exit** → `/people/:id/exit` with FnF as before + attachment block.
@@ -439,9 +445,10 @@ Standalone page (no HR nav). Signed single-use token expires after the cycle cut
 **Other rules**
 
 - Never hold the whole payroll: a blocking issue affects only the named employee. **Never hold the whole payroll for unsigned review either.**
-- **Unsigned review outcomes (October):** approved + auto-matched paid as calculated; unapproved paid at September. November gets **arrears** (underpaid: James +£8,000, Ananya +₹15,000, Rajesh +₹22,000, Thiago +R$6,170) or **recovery** (overpaid: Chloe –£1,450, Mateo –R$2,667).
+- **Input cutoff is the 15th.** On or before that date, a new employee, bonus, or salary change belongs to this cycle. After the 15th it belongs to the next cycle's review, which opens on the 17th. Exception: a salary change for someone who already has a row on the open review stays on this review and is marked approved.
+- **Unsigned review outcomes (October):** approved + auto-matched paid as calculated; unapproved paid at the previous salary. The gap is computed from current pay, not from a fixed list of names. November gets **arrears** when this cycle is higher, or a **deductible** when it is lower. The seed starts at James +£8,000, Ananya +₹15,000, Rajesh +₹22,000, Thiago +R$6,170, Chloe –£1,450, Mateo –R$2,667.
 - **Signed off October:** all approved changes paid; November review has no arrears/recoveries from October — only November changes + carry-overs whose data was fixed.
-- **David Müller:** bank return Oct 29 ("Account closed"). Paid box amber "N–1 of N · 1 payment returned". Issue "Payment returned – update bank details" (employee). Fixed → "Payment re-sent · Nov 3". Unfixed by Nov 15 → paid with November run.
+- **David Müller:** bank return from Oct 29 ("Account closed"), after October pay. It is absent when inputs close on Oct 15. Paid box amber "N–1 of N · 1 payment returned". Issue "Payment returned – update bank details". Saving the bank account resolves it and it leaves Action needed. Unfixed by Nov 15 → paid with the November run.
 - **Review windows** from config (Oct 17–22, Nov 17–22). From Nov 1 screens are November-cycle-aware.
 - One owner per issue — derived from employee-owned vs HR-owned fields. Funding → finance.
 - Email CTAs and Remind employee as §6 / employee reminder rules above.
@@ -477,6 +484,13 @@ The screenshots in `stitch_multiplier_payroll_integration_prototype/` are visual
 **Path B (not signed off):** Reset → leave Priya unfixed, approve nothing → Oct 23 red closed review (arrears/recovery banner) → Nov 1 Action needed has Priya + David → fix Priya → Nov 17 review shows Priya "October + November" + 4 arrears + 2 recoveries; Review nav badge shows the count.
 
 Also: server pagination on People; Action needed selection/owner/James buttons; employee reminder email body clean; live employee totals.
+
+**Further checks (working prototype):** input-deadline mail does not list every action; unread mail is numbered; a salary saved from the profile stays approved on the open review; a post-15th joiner, bonus, or hike appears on the next review; a bank return resolves when the account is saved; review cards follow approvals and carry amounts follow the edited pay.
+
+## 12. Where the product is written down
+
+- `PRD.md` — requirements for the behaviour above.
+- `ROADMAP.md` — what is done, and what is still a later version.
 
 ## 13. Running and testing
 
