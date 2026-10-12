@@ -14,7 +14,7 @@ The solution is a **Multiplier-branded Payroll tab embedded inside the customer'
 
 - **Desktop web only**, designed at 1440px wide. No mobile layouts (mobile is V2). Tables never overflow the page: truncate long cells with a tooltip; horizontal scroll is allowed only *inside* the table container.
 - **API-based.** The frontend is a thin client: every read and write goes through the backend API (`/api`, see §14 and `architecture.md`); no business data lives in frontend source files. Business rules are read from `/config` (dates, tax rates, thresholds, required fields) and are never hard-coded in components.
-- **State persists.** User actions (fixes, uploads, edits, approvals, sign-off, reminders) are written to the SQLite store and survive page refresh and prototype-date changes. The prototype date is stored too. **Reset demo** (secondary button at the bottom of the left nav → confirmation → `POST /api/demo/reset`) reseeds from `config/seed.json` and reloads Overview. No other reset link.
+- **State persists.** User actions (fixes, uploads, edits, approvals, sign-off, reminders) are written to the SQLite store and survive page refresh and prototype-date changes. The prototype date (`clarity.asOf`) and the signed-in persona (`clarity.persona`) are stored in the browser. **Reset demo** sits next to the signed-in name in the prototype bar (confirmation → `POST /api/demo/reset`) and reseeds from `config/seed.json`.
 - **Real vs simulated.** Real: Google Drive file picking, document text extraction, LLM field mapping, database persistence, **outgoing employee reminder emails** via Gmail SMTP when configured (§8 / §14.7). Simulated when SMTP is missing: email is still saved to Notifications with a form link. Country payroll processing, funding and payment remain simulated. Every real call has a **demo fallback** (§14.5) so the live demo never breaks.
 - **Every change asks for confirmation** in a modal before it is saved (resolve, approve, edit, exit, one-time payment, sign-off). Pay edits that trip the AI-check rule (§8) get a second "AI check" confirmation.
 - **Each fact appears once per screen.** No decorative stat tiles, banners or charts.
@@ -40,7 +40,7 @@ The solution is a **Multiplier-branded Payroll tab embedded inside the customer'
 **Config** (`config/`)
 - `cycle.json` – countries, October–January cycle dates, prototype date options
 - `rules.json` – tax rates, AI-check thresholds, required fields with owners, formats
-- `company.json` – brand, admin name, HR tool name, “Powered by Multiplier” caption
+- `company.json` – brand, Global HR admin, country HR admins, finance admin, HR tool name, “Powered by Multiplier” caption (sidebar Payroll group only)
 - `seed.json` – starting rows only (never imported by runtime app code except the seeder)
 - Alt dataset under `config/alt/` + `seed/alt.json` for dual-suite (`DATASET=acme|alt`)
 - `.env.example` – Google, LLM, SMTP, `DEMO_FALLBACK=true`. `.env` is git-ignored.
@@ -78,44 +78,61 @@ The solution is a **Multiplier-branded Payroll tab embedded inside the customer'
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│ Prototype bar: "Prototype date: [📅 calendar]" · API base      │
+│ Prototype bar: date picker · persona dropdown · Reset demo    │
 ├──────────────┬────────────────────────────────────────────────┤
-│ HR tool nav  │ Breadcrumb · ← Back (when not top-level)       │
-│ Employees    │ Page title                                     │
-│ Time off     │   tabs: All employees · Add employee           │
-│ Payroll ▾    │                                                │
-│  Overview    │                                                │
-│  Action needed (badge = open issues)                          │
-│  Review & approve (badge = lines needing approval when open)  │
-│  Notifications                                                │
-│  ─────────   │                                                │
+│ People       │ Breadcrumb · ← Back (when not top-level)       │
+│  Employees   │ Page title                                     │
+│  Time off    [V2]                                             │
+│  Insurance   [V2]                                             │
+│  Expenses    [V2]                                             │
+│  Notifications (badge = unread mail for this persona)         │
+│ Payroll · Powered by Multiplier                               │
+│  Overview                                                     │
+│  Action needed (badge = open issues in this persona's scope)  │
+│  Review & approve (badge = lines needing approval in scope)   │
+│  Employees                                                    │
+│  ─────────                                                    │
 │  AI assistant  [V2] (greyed)                                  │
 │  Finance view  [V3] (greyed)                                  │
 │  Calendar view [V3] (greyed)                                  │
-│  ─────────   │                                                │
-│  Reset demo  │  (secondary button, bottom of left nav)        │
 └──────────────┴────────────────────────────────────────────────┘
 ```
 
-- HR-tool shell is neutral, no real brand. Small grey label top-left: "Shown inside the customer's HR tool, e.g. Workday".
-- Payroll pages header (one line): "Payroll · October 2026 · Powered by Multiplier" and "Synced with Workday 12 min ago".
-- **One place for employees.** The HR-tool nav has a single **Employees** item with two tabs: **All employees** (`/people`) and **Add employee** (`/people/add`). There is no separate Payroll › Employees page (`/payroll/employees` redirects to `/people`).
-- People pages use the HR-tool look, not the Payroll header.
+- HR-tool shell is neutral, no real brand. The People group caption is “Sync from HRIS tools and third party channels”.
+- **Powered by Multiplier** sits in the sidebar next to the Payroll label. People and HR page headers do not repeat it.
+- **Two places list employees.** People → Employees (`/people`) is the HR list. Payroll → Employees (`/payroll/employees`) is the payroll view of the same roster, scoped to the signed-in country when a country admin is selected.
+- People pages use the HR-tool look, not a Payroll header.
 - The employee form (`/form/:token`) is a standalone page styled like a Google Form, without the shell.
-- **Breadcrumb** on every page, top left above the title. Each part except the last is a link, e.g. `HR tool / Payroll / Overview`, `HR tool / Employees / Priya Nair / Add one-time payment`.
+- **Breadcrumb** on every page, top left above the title. Each part except the last is a link.
 - **← Back** next to the breadcrumb on every page that is not a top-level nav page (employee profile, add employee, one-time payment, record exit, employee form). Uses browser history; falls back to the parent crumb.
-- **Reset demo** only at the bottom of the left nav (confirmation: "Reset all demo data to Oct 12?").
+- **Reset demo** is a text button next to the signed-in name. It confirms before reseeding.
+
+### Who is signed in
+
+The prototype bar dropdown is the persona. It is not a login.
+
+| Persona | Name | Scope |
+|---|---|---|
+| Global HR admin | Maya Rao | Every country. Write mail. Company sign-off |
+| India HR admin | Priya Mehta | India |
+| UK HR admin | Helen Clarke | UK |
+| Germany HR admin | Greta Hoffmann | Germany |
+| Brazil HR admin | Camila Rocha | Brazil |
+
+Finance admin Noah Grant is named on the funding stage and in funding mail. There is no finance screen.
+
+Global country rows show on track or at risk, the country admin, and Write mail. A miss link switches the dropdown to that country admin and opens the detailed page. At risk is one amber colour on every country. A country admin does not see the country list, because that status is already the page. Action needed, Review & approve, and Employees lock the country filter. Badges use the same scope. Zero items says “No issues” on the sidebar, the page, and the footer.
 
 ### Routes
 
 | Route | Screen | API calls |
 |---|---|---|
-| `/payroll/overview` | Overview (default) | `GET /api/state` (overview, outcome) |
+| `/payroll/overview` | Overview (default) | `GET /api/cycles/current/overview` |
 | `/payroll/actions?issue=<id>&country=` | Action needed; URL selects issue / country filter | `GET /api/issues`, resolve, remind |
 | `/payroll/review` | Review & approve | `GET /api/review`, approve, reopen, signoff |
-| `/payroll/notifications` | Notifications | `GET /api/notifications`, `GET /api/notifications/{id}` |
+| `/payroll/employees` | Payroll employees, country-scoped for a country admin | `GET /api/employees` |
+| `/people/notifications` | Notifications (`/payroll/notifications` redirects here) | `GET /api/notifications`, `GET /api/notifications/{id}` |
 | `/people?page=&pageSize=&filter=&country=&q=&action=&status=` | All employees (server pagination + filters in URL) | `GET /api/employees?page=&pageSize=` |
-| `/payroll/october-summary` | October summary (read-only, from Nov 1 or Oct 23–31) | `GET /api/cycles/october/summary` |
 | `/people/add` | Add employee | `POST /api/employees`, `POST /api/documents/extract` |
 | `/people/:id?panel=salary` | Employee profile with Payroll panel | `GET/PATCH /api/employees/{id}`, OTP, exit, extract |
 | `/people/:id/one-time-payment` | Add one-time payment | `POST /api/employees/{id}/one-time-payments`, extract |
@@ -124,24 +141,21 @@ The solution is a **Multiplier-branded Payroll tab embedded inside the customer'
 
 ## 5. Prototype date control
 
-**Calendar date picker** (range **Oct 1 – Nov 30, 2026**), not a fixed dropdown. Key dates are marked with a dot and tooltip: Oct 15 Input finalisation, Oct 16 Calculation, Oct 17 Review opens, Oct 22 Review closes, Oct 23 Funding, Oct 25 Submitted, Oct 28 Pay day, Nov 15 November cutoff. Changing the date refetches every screen. **Any date in range must work** — outcomes are computed from current state, not hard-coded to a short list.
+**Calendar date picker** (range **1 Oct 2026 – 31 Jan 2027**), not a fixed dropdown. Changing the date refetches every screen. **Any date in range must work.** Labels, deadlines, and mail use the open cycle’s month. November must not still say October.
 
-| Date | Stage | What the screens show |
-|---|---|---|
-| Oct 12–14 | Input finalisation | N days left · open actions |
-| Oct 15 | Input finalisation (today) | "Cutoff today". Inputs lock at end of day |
-| **Oct 16** | **Calculation & final checks** | Multiplier calculates pay; builds review list (38/32/6). Review still closed |
-| **Oct 17–22** | **Review** | Review window open. Approve lines and sign off |
-| End of Oct 22 | Review closes | Locked, read-only (Oct 23–31: closed October review view) |
-| Oct 23 | Funding | Funds received (finance) |
-| Oct 25 | Submitted | "Submitted for N employees" (in-run only) |
-| Oct 28 | Paid | "N of N paid" |
-| **Oct 29** | Paid | David Müller bank return → "N–1 of N paid · 1 payment returned" |
-| **Nov 1** | November cycle open | Every screen is November; "View October summary →" for read-only October |
-| Nov 15 | November input finalisation | |
-| **Nov 17–22** | November Review | November review window (same rules as October) |
+Display milestones are the same day of the pay month. October is the worked example:
 
-Countdown: before/on Oct 15 → "N days left" / "Cutoff today"; after → "Input finalisation closed". From Nov 1, use November dates from config.
+| Day of the pay month | What the screens show |
+|---|---|
+| 1–15 | Add employees, bonuses, hikes, and missing details by the 15th. People added after the 15th move to next month. Review by the 19th and final closure on the 22nd stay on the card, with payroll submitted and pay day |
+| 16–19 | Complete review by the 19th |
+| 20–22 | Final closure on the 22nd. Changes after the 22nd apply next month |
+| 23–26 | Funding. Finance admin is named. Demo mail treats funds as already added on the 25th and 26th |
+| 27 | Payroll submitted |
+| 29 | Pay day. Before it, the tracker counts days left. On the day it says Today. After it, paid N of M |
+| 30 | Final report of who was actually paid, including a payment return recorded that day |
+| 30–31 | Yellow highlight for the payroll that just paid |
+| 1st of the next month | Highlight is gone. That cycle appears under Previous payrolls |
 
 ## 6. Data
 
@@ -149,14 +163,17 @@ Countdown: before/on Oct 15 → "N days left" / "Cutoff today"; after → "Input
 
 - Customer: **Acme Tech**. HR tool: **Workday**.
 - 120 employees before the demo: **India 50, UK 30, Germany 22, Brazil 18**. 4 countries only (no Philippines). Priya and Arjun are added during the demo (→ 122).
-- October 2026: input deadline **Oct 22** · final sync **Oct 23** · funding request **Oct 23** · submitted **Oct 25** · pay date **Oct 28**.
-- November 2026: input deadline **Nov 22** · final sync **Nov 23** · funding request **Nov 23** · submitted **Nov 25** · pay date **Nov 28**.
-- Action needed and Review & approve share that input deadline. There is no separate calculation day and no review window that opens later.
-- **Cycle-aware:** from Nov 1 every page shows the November cycle. October is a read-only previous cycle. A change synced after the deadline is marked Next cycle and does not enter the locked payroll.
+Engine dates in `config/cycle.json` (same pattern for October 2026, November 2026, December 2026, January 2027):
 
-### Stages (in order)
+- Input deadline, input finalisation, and review close: the **22nd**.
+- Final sync and calculation: the **23rd**.
+- Funding request and funding due: the **26th**.
+- Submitted: the **27th**.
+- Pay date: the **29th**. A returned payment is recorded the next day (30 October for October).
 
-`Sync & resolve → Final sync → Funding → Submitted → Paid`
+The stage tracker does not copy those engine labels. It shows **Input close (15th) → Review window (16th–19th) → Final report (21st) → Review closed (22nd) → Funding (24th–27th) → Pay day**.
+
+From the 1st, every page shows the cycle that contains that date. Closed cycles whose pay date is before the 1st of the current month appear under Previous payrolls. A change synced after the engine deadline is marked Next cycle.
 
 ### HR source and payroll snapshot
 
@@ -228,10 +245,13 @@ Any non-empty value in the right format is accepted. Validate the format only: P
 
 ### Reminder card (not an issue, no severity, not counted in the action count)
 
-On the Overview and the top of Action needed, one neutral card until Oct 15:
+On the Overview, the deadline card names the open month. Through the 15th it reads, for October:
 
-> **Any October changes?** Add new joiners, exits, one-time payments and salary changes by **Oct 15** to include them in October pay. After that they move to November.
-> [Add employee] [Record exit] [Add one-time payment]
+> Add employees, bonuses, hikes, and missing details by **Oct 15**. People added after Oct 15 move to next month. Complete review by **Oct 19**. Final closure **Oct 22**. Payroll submitted **Oct 27** · Pay day **Oct 29**.
+
+In November the same card says Nov 15, Nov 19, Nov 22, Nov 27, and Nov 29. When anyone will miss payment, a short “N will miss payment” line inside the card scrolls to Countries. The names are not listed on Overview.
+
+[Add employee] [Record exit] [Add one-time payment] sit with that card. [Add employee] → `/people/add`. [Record exit] and [Add one-time payment] open Payroll employees with a hint to pick an employee.
 
 [Add employee] → `/people/add`. [Record exit] and [Add one-time payment] open All employees with a hint "Pick an employee".
 
@@ -295,34 +315,21 @@ Documents are added via **Use demo file**, **Upload from computer**, or **Choose
 
 Top numbers start at **38 changed lines · 32 matched to a source · 6 need your check.** They are computed, never a fixed total: changed employees with a matched source, plus every approved review line, count as matched. Need your check is the rest. The three cards always add up. Approving a line in the table moves that person into Matched and drops Need your check. A changed flag with no pay difference and no review line is not counted. The footer ("4 of 6 lines approved") counts only the rows in the table. Edits made by the HR admin add lines ("Edited by you – needs approval"). A salary confirmed from the employee profile during an open review stays on that review, is marked approved, and increases Matched.
 
-### Seed: notifications (email only; Slack is a V2 stub)
+### Notifications (email only; Slack is a V2 stub)
 
-Computed from state; only send what applies. Remove the old "Oct 20 – Payroll ready for your approval".
+Mail is computed for the open month. Subjects start with that month or that country. A November inbox must not cite October deadlines. The full calendar is in `PRD.md`. In short:
 
-| Date | To | Subject | Condition | Button |
-|---|---|---|---|---|
-| Oct 12 | HR admin | 3 days left to add payroll inputs | Always (before cutoff) | Open Action needed |
-| Oct 13 | Employee | Add your details… | Only if reminder sent | Add my details |
-| Oct 14 | HR admin | Cutoff tomorrow for adding payroll inputs | Before cutoff | Open Action needed |
-| Oct 15 | HR admin | Cutoff today for adding payroll inputs | Before/on cutoff | Open Action needed |
-| Oct 16 | HR admin | Inputs locked – review opens Oct 17 | Always; lists anyone moved to November | Open Overview |
-| **Oct 17** | HR admin | **Payroll ready for review: N lines need your check · approve by Oct 22** | Always | Open Review & approve |
-| Oct 20 | HR admin | Reminder: 2 days left to review · N lines still open | Only if not signed off | Open Review & approve |
-| Oct 22 | HR admin | Review closes today · N lines still open | Only if not signed off | Open Review & approve |
-| Oct 22 | Finance | Funding due Oct 23 | Always | Open Overview |
-| Oct 23 | HR admin | Payroll signed off – funding in progress | If signed off | Open Overview |
-| Oct 23 | HR admin | Review closed without sign-off · N changes moved to November | If not signed off | Open Review & approve |
-| Oct 28 | HR admin | October payroll paid… | After pay date | Open Overview |
-| **Nov 1** | HR admin | **November cycle open · N carried over from October · fix by Nov 15** | Always from Nov 1 | Open Action needed |
-| **Nov 17** | HR admin | **November review open · N lines (incl. N from October) · approve by Nov 22** | Always | Open Review & approve |
+- **Global:** 10, 15, 16, 19, 20, 22, 23 (funding plus who-will-be-paid), 25, 26, pay day (29), and the 30th actual-paid report. Several say to ignore the mail when nothing is open or funds are already in.
+- **Country HR admin:** 3 (schedule), 10, 13, 14, 15, 16, 18, 19, 20, 21, 22, 23 (ask finance, plus who-will-be-paid), 25, 26, pay day, and the 30th. Global is in copy on the late review and funding notes.
+- **Employees with missing details:** 10, 13, 14, 15. The button opens `/people/{id}?panel=missing#missing-details`. Each mail says they will miss payment this cycle otherwise. No mail once details are in and pay is on track. The screen then says “Thanks for adding your details. Payment is on track.”
 
-Sign-off also sends an in-app confirmation (and SMTP email if configured): "You signed off October payroll at HH:MM". Reminder emails stop once signed off.
+The inbox on `/people/notifications` shows only mail for the signed-in persona. Global sees global mail and employee reminders. A country admin sees that country and its employee reminders. Write mail is an in-app note from Global to a country admin.
 
-**Input-deadline emails (Oct 12, 14 and 15)** do not list every open issue. The subject is the deadline for adding payroll inputs. The body says payroll inputs close on 15 October, and that unresolved actions, or a new employee, salary change, or bonus not added by then, may move all or part of that employee's pay to the next cycle. **What to do** is one step, "Resolve actions in Action needed", linking to Action needed. A **Payroll input policy** link opens a demo page (`/payroll/input-policy`); it does not change pay.
+Older reminder rows with no audience stay in the API and stay out of this inbox.
 
-Inbox order is newest first, including mail sent on the same day (`created_at`). Unread rows are numbered 1, 2, 3 from the top. The inbox and the Notifications nav badge show "N unread messages". Opening a message marks it read. Read state is stored and survives refresh. Reset demo clears it.
+Inbox order is newest first. Opening a message marks it read. Read state survives refresh. Reset demo clears it.
 
-**Employee reminder emails** (e.g. Lena tax ID): no raw URLs in the body — inline hyperlink "add your details here" + one button **Add my details** (a single arrow icon, not a second arrow in the label) to the same form. Deadline from current cycle config. Carried-over subject: "Add your tax ID for payroll – missed October pay". Body ends with "Your details go straight to payroll; you don't need to reply to this email." Block renamed "What we need" with field + reason. SMTP failure is an amber **system banner** above the email in Notifications, not inside the email body.
+**Remind employee** (for example Lena’s tax ID) saves that email in Notifications for the country admin and for Global, with a link to the missing-details form. Without SMTP this in-app email is the send. A real Gmail delivery needs `SMTP_USER`, `SMTP_PASS`, `DEMO_INBOX`, and `APP_BASE_URL`. If SMTP is configured and the send fails, the row stays undelivered and the message includes the error.
 
 ## 7. Screens
 
@@ -332,31 +339,26 @@ Inbox order is newest first, including mail sent on the same day (`created_at`).
 |---|---|---|
 | What | Data is **missing or wrong**, so the employee can't be paid correctly | Data is **complete**; only the pay amount needs a human check |
 | Examples | Missing tax ID, PAN, bank, CPF, HR fields; salary entered as 3x and not explained | Salary spike or drop, raise above 10%, unpaid leave, statutory leave pay, vacation pay, arrears |
-| Deadline | Input finalisation (Oct 15 / Nov 15) | Review window **Oct 17–22** / **Nov 17–22** |
+| Deadline | Add-details window closes the 15th. Engine input deadline is the 22nd | Review window on the tracker and in mail is the **16th–19th**. Engine review close is the **22nd** |
 | If not fixed | Employee moves to next cycle | Unapproved → September pay; November **arrears** (underpaid) or **recovery** (overpaid) |
 
 **Why review waits:** Review can only start once inputs are locked and Multiplier has calculated pay. Reviewing earlier means reviewing numbers that can still change.
 
 Missing-data items **never** appear in Review & approve. Review shows: "**N employees are not in this run**…" only while the window is **open**.
 
-**Nav badges:**
+**Nav badges** use the signed-in country. Global counts every country. A country admin counts only theirs. Zero shows no badge, and the page says there are no issues.
 - **Overview:** never.
-- **Action needed:** open-issue count (after cutoff: November items only).
-- **Review & approve:** while the review window is open (Oct 17–22 or Nov 17–22), badge = lines still needing approval (need your check + edited by you + reopened). Count drops as lines are approved. **No badge** after sign-off or when the window is closed.
-- **Notifications:** unread email count. Drops when a message is opened.
+- **Action needed:** open issues in scope.
+- **Review & approve:** lines in scope that still need approval. Company-wide sign-off is hidden for a country admin.
+- **Notifications:** unread email for this persona. Drops when a message is opened.
 
 ### Screen 1 – Overview (`/payroll/overview`)
 
-- Status line, stage tracker, countries, Up next (+ funding/submitted/outcome cards). No Action needed list. No "Start review now".
-- **Status line by date:**
-  - Up to Oct 15: "**N actions need you** before input finalisation on Oct 15 · N days left" → Action needed.
-  - Oct 16: "Inputs locked. Multiplier is calculating pay. **Review opens Oct 17.**"
-  - Oct 17–22, not signed off: "**Review open · N lines need your check** · closes Oct 22 · N days left" → Review & approve.
-  - Signed off: "Payroll signed off · funding Oct 23".
-  - After Oct 15 never say "actions need you before input finalisation".
-- **Stage tracker:** Review box grey "Opens Oct 17" before; blue "Open · closes Oct 22" during; green "Signed off Oct 19" when signed off; red "Closed · N changes moved to November" if closed without sign-off. Calculation stage dated **Oct 16**, text "Pay calculated Oct 16 ✓" once past. Lock icon once closed.
-- **Up next:** "Oct 17–22 · Review window · N lines" → Review & approve (during/before window).
-- Countries and outcome cards as before.
+- Deadline card, six-stage tracker, and (for Global) a country list. No separate list of people who will miss payment.
+- The deadline card follows §5. “N will miss payment” is a short line in that card and scrolls to Countries.
+- **Stage tracker:** Input close, Review window, Final report, Review closed, Funding (names the finance admin and whether funds are still to be added), Pay day. Dates are the pay month. Before pay day the last stage counts days left. On pay day it says Today. After pay day it says paid N of M.
+- **Previous payroll:** a yellow highlight only on the 30th and 31st of the pay month. From the 1st, **Previous payrolls** lists earlier cycles, most recent first, frozen at the last day of each pay month.
+- Country rows are Global only. Each row is on track or at risk, names the country admin, and offers Write mail.
 
 ### Screen 2 – Action needed (`/payroll/actions`)
 
@@ -369,7 +371,7 @@ Missing-data items **never** appear in Review & approve. Review shows: "**N empl
   1. Primary fix (e.g. "Split into base + bonus") — black — confirmation modal with pre-filled split + optional document.
   2. Secondary "{amount} is correct" — white border — required reason (Promotion · Role change · Retention / market correction · Contract correction · Other) + optional document → resolves; Review line becomes matched ("HR confirmation").
   3. Text link "Open salary structure" → employee profile. Remove separate "Correct the amount".
-- David Müller (from Oct 29): "Payment returned – update bank details". This is a bank return after October pay, not a missed October input, and it is not tagged Carried over. Deadline Nov 15. Saving the new bank account resolves the issue and removes it from Action needed. It stays visible on earlier dates, before the account was saved.
+- David Müller (from Oct 30, the day after October pay): "Payment returned – update bank details". This is a bank return after October pay, not a missed October input, and it is not tagged Carried over. Saving the new bank account resolves the issue and removes it from Action needed. It stays hidden on dates before the return was recorded.
 - From Nov 1: carried-over missing-data items (for example Lena's tax ID) say "Missed October pay. November pay at risk." A bank return does not use that sentence.
 
 ### Screen 3 – All employees (`/people`)
@@ -385,11 +387,11 @@ Missing-data items **never** appear in Review & approve. Review shows: "**N empl
 
 **Open (Oct 17–22 / Nov 17–22):** Header with closes date + days left. Numbers, approve, sign-off, not-in-run line, "Review any other employee". Nav badge = remaining need-check count.
 
-**Closed October (Oct 23–31 only, or via October summary):** Read-only, greyed rows (slate-400). Badge "Moved to November review" + "Next approval: Nov 17–22" (from next cycle config). "View employee" text link (not black button). Header: "Review closed Oct 22 · not signed off · next review opens Nov 17". The warning lists only lines that are still unapproved. Top numbers stay live, grey, label "Final October numbers". Remove not-in-run and "Review any other employee". From **Nov 1** the Review page shows **November**, not this closed October view.
+**Closed October (after Oct 22, through Oct 31):** Read-only. The warning lists only lines that are still unapproved. From **Nov 1** the Review page shows **November**. October is a previous payroll, not a separate summary route.
 
 **Unsigned → November lines:** each unapproved October line carries the live difference between last approved pay and this cycle (salary, allowances, one-time payments, unpaid leave). Underpaid becomes arrears; overpaid becomes a deductible. Seed starting amounts are James +£8,000, Ananya +₹15,000, Rajesh +₹22,000, Thiago +R$6,170, Chloe –£1,450, Mateo –R$2,667. Editing pay before sign-off changes the amount that carries. Approving a line removes that person from the warning and from the November carry. Tag "From October review (not signed off)". Recoveries need approval + "Employee notified" checkbox.
 
-### Screen 5 – Notifications (`/payroll/notifications`)
+### Screen 5 – Notifications (`/people/notifications`)
 
 - Tab switch: **Email** | **Slack** (V2 stub).
 - Left: inbox, newest first, with unread count and numbers 1, 2, 3 on unread rows. Right: selected email + CTA per §6 notifications (Open Action needed / Open Review & approve / Overview / Add my details). Opening a message marks it read.
@@ -434,15 +436,15 @@ Standalone page (no HR nav). Signed single-use token expires after the cycle cut
 
 | Condition | Result shown |
 |---|---|
-| Existing employee, nothing missing, date < Oct 28 | "Payment on track for October" (green) |
-| Existing employee, nothing missing, date ≥ Oct 28 | "Paid in October" (green) |
+| Existing employee, nothing missing, date before pay day (Oct 29) | "Payment on track for October" (green) |
+| Existing employee, nothing missing, date on or after pay day | "Paid in October" (green) |
 | Existing employee, missing required field, date ≤ Oct 15 | "Held until {field} is added – fix by Oct 15" (red) |
-| New joiner, dateAdded ≤ Oct 15, nothing missing, date < Oct 28 | "Payment on track for October" (green) |
-| New joiner, dateAdded ≤ Oct 15, nothing missing, date ≥ Oct 28 | "Paid in October" (green) |
+| New joiner, dateAdded ≤ Oct 15, nothing missing, date before pay day | "Payment on track for October" (green) |
+| New joiner, dateAdded ≤ Oct 15, nothing missing, date on or after pay day | "Paid in October" (green) |
 | New joiner, dateAdded ≤ Oct 15, missing fields | "Missing {fields} – fix by Oct 15 for October pay" (amber) |
 | dateAdded > Oct 15 | "Added after Oct 15 cutoff → paid in November" (red) + disabled Instant payment |
-| Missing after Oct 15 (date Oct 16–28) | "Moved to November · fix by Nov 15" (amber) |
-| Still missing after the Oct 28 pay date | **red** "Missed October pay. November pay at risk." The issue stays in Action needed with deadline **Nov 15** |
+| Missing after Oct 15 (date Oct 16 through the day before pay) | "Moved to November · fix by Nov 15" (amber) |
+| Still missing after the Oct 29 pay date | **red** "Missed October pay. November pay at risk." The issue stays in Action needed |
 | Fixed before Nov 15 after missing October | "Paid in November payroll" |
 | One-time payment / exit recorded ≤ Oct 15 | included in October ("FnF paid in October payroll") |
 | One-time payment / exit recorded > Oct 15 | November ("FnF moves to November payroll") |
@@ -456,11 +458,11 @@ Standalone page (no HR nav). Signed single-use token expires after the cycle cut
 **Other rules**
 
 - Never hold the whole payroll: a blocking issue affects only the named employee. **Never hold the whole payroll for unsigned review either.**
-- **Input cutoff is the 15th.** On or before that date, a new employee, bonus, or salary change belongs to this cycle. After the 15th it belongs to the next cycle's review, which opens on the 17th. Exception: a salary change for someone who already has a row on the open review stays on this review and is marked approved.
+- **The add-employee window closes on the 15th** of the pay month. On or before that date, a new employee, bonus, or salary change belongs to this cycle. After the 15th it belongs to the next cycle. The engine input deadline and review close stay the 22nd. Exception: a salary change for someone who already has a row on the open review stays on this review and is marked approved.
 - **Unsigned review outcomes (October):** approved + auto-matched paid as calculated; unapproved paid at the previous salary. The gap is computed from current pay, not from a fixed list of names. November gets **arrears** when this cycle is higher, or a **deductible** when it is lower. The seed starts at James +£8,000, Ananya +₹15,000, Rajesh +₹22,000, Thiago +R$6,170, Chloe –£1,450, Mateo –R$2,667.
 - **Signed off October:** all approved changes paid; November review has no arrears/recoveries from October — only November changes + carry-overs whose data was fixed.
-- **David Müller:** bank return from Oct 29 ("Account closed"), after October pay. It is absent when inputs close on Oct 15. Paid box amber "N–1 of N · 1 payment returned". Issue "Payment returned – update bank details". Saving the bank account resolves it and it leaves Action needed. Unfixed by Nov 15 → paid with the November run.
-- **Review windows** from config (Oct 17–22, Nov 17–22). From Nov 1 screens are November-cycle-aware.
+- **David Müller:** bank return from Oct 30 ("Account closed"), the day after October pay. It is absent on earlier dates. It is its own pay outcome, not also counted as missing inputs. Issue "Payment returned – update bank details". Saving the bank account resolves it and it leaves Action needed. The 30th and 31st highlight, and the October row under Previous payrolls from Nov 1, include that return.
+- **Review window on the tracker and in mail** is the 16th–19th of the pay month. The engine review close is the 22nd. From the 1st of a month, screens use that month’s cycle.
 - One owner per issue — derived from employee-owned vs HR-owned fields. Funding → finance.
 - Email CTAs and Remind employee as §6 / employee reminder rules above.
 - AI explains; it never changes a number or decides pay timing (`rules.py` does). Every write records `created_at` and `source`.
@@ -473,8 +475,10 @@ Standalone page (no HR nav). Signed single-use token expires after the cycle cut
 | AI assistant | V2 | Greyed nav item with tag |
 | Write-back to HR tool | V2 | Greyed note on issue detail |
 | Slack reminders | V2 | Greyed tab in Notifications |
+| Time off, Insurance, Expenses | V2 | Greyed under People |
 | Mobile | V2 | Not built (mention in footer) |
 | Finance view | V3 | Greyed nav item with tag |
+| In-app alerts | V3 | Email is the inbox |
 | Calendar view | V3 | Greyed nav item with tag |
 | Guided fix steps | V3 | Info icon tooltip on each issue |
 | Instant / off-cycle payment | Not available | Disabled option with tooltip wherever an employee moves to November |
@@ -490,9 +494,9 @@ The screenshots in `stitch_multiplier_payroll_integration_prototype/` are visual
 
 ## 11. Demo script (acceptance checks – round 5)
 
-**Path A (signed off):** Fix all → approve all → sign off Oct 19 → Oct 25 submitted N → Oct 29 one returned (David) → Nov 1 Action needed has David → Nov 17 review has **no** arrears.
+**Path A (signed off):** Fix all → approve all → sign off → Oct 27 payroll submitted → Oct 29 pay day → Oct 30 David’s payment returned → Nov 1 Action needed has David and October sits under Previous payrolls.
 
-**Path B (not signed off):** Reset → leave Priya unfixed, approve nothing → Oct 23 red closed review (arrears/recovery banner) → Nov 1 Action needed has Priya + David → fix Priya → Nov 17 review shows Priya "October + November" + 4 arrears + 2 recoveries; Review nav badge shows the count.
+**Path B (not signed off):** Reset → leave Priya unfixed, approve nothing → after the 22nd the closed review carries unapproved amounts → Nov 1 Action needed has Priya and David → fix Priya → the November review shows the carry. Review nav badge shows that country’s count when a country admin is signed in.
 
 Also: server pagination on People; Action needed selection/owner/James buttons; employee reminder email body clean; live employee totals.
 
@@ -594,6 +598,8 @@ Validation findings come from `config/rules.json` (required fields + owners, for
 
 - `.env`: `SMTP_USER`, `SMTP_PASS` (Gmail app password), `DEMO_INBOX`, `APP_BASE_URL=http://localhost:5173`, optional `FORM_TOKEN_SECRET`.
 - Backend sends via SMTP (Flask + smtplib / equivalent). Seed employees get plus-alias addresses derived from `DEMO_INBOX` (Priya → `you+priya@gmail.com`, Lena → `you+lena@gmail.com`).
-- Email: "Hi Priya, we need your PAN and bank details… by **Oct 15**." Button **Add my details** → `APP_BASE_URL/form/<signed-token>`.
+- Email: "Hi Priya, we need your PAN and bank details… by the 15th of the open month." Button **Add my details** → the missing-details form on that employee’s profile.
 - Token is single-use and expires after the cycle cutoff.
-- If SMTP is not configured: Remind still works; Notifications get the email + form link; UI shows "Email not sent – SMTP not set up (see README)".
+- If SMTP is not configured: Remind still works. Notifications store the email for the country admin and for Global, and the button reads as sent. A real Gmail delivery needs the four SMTP settings above. If SMTP is configured and the send fails, the row stays undelivered and the message includes the error.
+- Add-details links, including Remind, open `/people/{id}?panel=missing#missing-details`.
+- When the saved details put pay on track, the screen says “Thanks for adding your details. Payment is on track.” and no confirmation email is sent.

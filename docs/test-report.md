@@ -31,8 +31,8 @@ Load alt with `DATASET=alt` before seeding / starting the API. Config loader: `d
 
 1. **Pay this cycle** — `pay_outlook()`; no “Paid in October” before payday.
 2. **Pagination** — footer + URL; e2e asserts Showing 1–25 of N.
-3. **Powered by Multiplier** — header on payroll and people.
-4. **Remind** — always stores notification; filters + amber SMTP label.
+3. **Powered by Multiplier** — sidebar caption on the Payroll group. People page headers do not repeat it.
+4. **Remind** — stores an in-app email for the country admin and for Global. Undelivered only when SMTP is configured and the send fails.
 5. **Add details** — inline format validation; modal errors; toast z-index above modal.
 
 ## Inventory findings

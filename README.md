@@ -1,6 +1,6 @@
 # Payroll Clarity (Multiplier)
 
-Clickable prototype: Multiplier-branded Payroll tab inside a customer HR tool shell. React SPA → Clarity API (Flask) → SQLite. Names and figures are illustrative (Acme Tech · Workday · October 2026). Source of truth: `context.md`.
+Clickable prototype: Multiplier-branded Payroll tab inside a customer HR tool shell. React SPA → Clarity API (Flask) → SQLite. Names and figures are illustrative (Acme Tech · Workday). The prototype date runs from 1 Oct 2026 through 31 Jan 2027. Dashboard dates and notification subjects follow the open month. Source of truth: `context.md`. Requirements: `PRD.md`. What is done: `ROADMAP.md`.
 
 | Layer | Location |
 |---|---|
@@ -24,23 +24,26 @@ Env: see `.env.example`. The browser talks to `/api` (Vite proxy). State persist
 
 ### Employee reminder email (optional SMTP)
 
-Set `SMTP_USER`, `SMTP_PASS` (Gmail app password), `DEMO_INBOX` (your Gmail), and `APP_BASE_URL=http://localhost:5173`. Remind employee then sends a real mail to plus-aliases such as `you+lena@gmail.com` / `you+priya@gmail.com` with **Add my details** → `/form/<signed-token>`. If SMTP is missing, Remind still saves the email to Notifications (with the form link) and shows **Email not sent – SMTP not set up (see README)**.
+Set `SMTP_USER`, `SMTP_PASS` (Gmail app password), `DEMO_INBOX` (your Gmail), and `APP_BASE_URL=http://localhost:5173`. Remind employee then sends a real mail to plus-aliases such as `you+lena@gmail.com`. **Add details** opens `/people/{id}?panel=missing#missing-details`. If SMTP is missing, Remind still saves that email in Notifications for the country admin and for the Global HR admin. The in-app email is the send. A failed send is marked undelivered only when SMTP is configured and the message does not go out.
+
+The prototype bar switches persona (Global HR admin Maya Rao, or a country HR admin) and holds **Reset demo**.
 
 ## Demo sequence (round 1)
 
 Use **Prototype date** in the top bar. Outcomes are computed from what you fixed.
 
+Sign in as Maya Rao (Global) unless a step names a country admin. The overview deadline card on Oct 12 cites Oct 15, Oct 19, Oct 22, payroll submitted Oct 27, and pay day Oct 29.
+
 | Date | Where | What you should see |
 |---|---|---|
-| Oct 12 | Notifications | 1 email, **3** grouped actions → **Open Payroll tab** → Overview "3 actions · 3 days left" + reminder card |
-| Oct 12 | Review & approve | Always open: 38 / 32 / 6; "2 employees are not in this run…"; **Sign off** disabled until lines approved |
-| Oct 12 | Action needed | **Remind Lena** → email (or SMTP fallback with form link) → fill Steuer-ID → issue resolves; or **Add details myself** |
-| Oct 13 | Employees → Add | Priya + offer letter → missing PAN/bank/manager → issue_004. Remind → **Add my details** `/form/<token>` → fill; Manager via HR **Add details** |
+| Oct 12 | Overview | Deadline card for October. “N will miss payment” scrolls to Countries. Stage tracker runs through Pay day |
+| Oct 12 | Review & approve | 38 changed · 32 matched · 6 need check, for Global. A country admin sees only that country |
+| Oct 12 | Action needed | **Remind Lena** saves an email in Notifications. **Add details** opens the missing-details form. Filling the last field shows “Thanks for adding your details. Payment is on track.” and does not send a confirmation email |
+| Oct 13 | Employees → Add | Priya + offer letter → missing PAN, bank, and manager |
 | Oct 13 | James salary | Open salary structure or attach `bonus_letter_james.pdf` → base £4,000 + bonus £8,000 |
-| Oct 17 | Add Arjun | After cutoff → November + disabled Instant payment. Unfixed missing → "Moved to November · fix by Nov 15" |
-| Oct 22 | Review | Per-line **Approve** (with confirm); **Sign off October payroll** when all approved |
-| Oct 23–28 | Overview | Funding / Submitted / Paid + outcome card (on time / November / at risk) |
-| Nov 2 | Notifications | November cycle open email |
+| Oct 30–31 | Overview | Yellow highlight for the October payroll that just paid, including a payment return on the 30th |
+| Nov 1 onward | Overview | Highlight is gone. October is under Previous payrolls |
+| Nov 14 | Overview and Notifications | Nov 15, Nov 19, Nov 22, Nov 27, Nov 29. Inbox subject “November: employee window is open” |
 
 **Reset demo** in the prototype bar (or `POST /api/demo/reset` / re-run `seed_db.py`) restores the Oct 12 seed: 120 employees · 3 open issues · 6 review lines.
 
@@ -58,7 +61,7 @@ Without keys, the UI offers **Upload from computer instead** and `DEMO_FALLBACK=
 ## Tests
 
 ```bash
-python3 -m pytest tests/ -q    # domain rules, seed integrity, API contracts (tmp DB)
+python3 -m pytest tests/ -q    # domain rules, seed integrity, API contracts, dynamic calendar (tmp DB)
 npm test                       # Vitest
 npm run test:e2e               # Playwright demo path (own API :8788 + Vite :5174)
 npm run build                  # tsc + vite

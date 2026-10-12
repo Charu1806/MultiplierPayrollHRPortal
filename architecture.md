@@ -341,7 +341,7 @@ sequenceDiagram
     else clear
         API->>Sub: lock cycle + handoff
         Sub->>Eng: approved register
-        API-->>UI: 200 Funding due Oct 23
+        API-->>UI: 200 Funding due the 26th
     end
 ```
 
@@ -462,7 +462,7 @@ erDiagram
 
 Receive (Connector) → Read document → Map fields → Validate country rules + cutoff → Store in cycle → Issue Service flags gaps → Panel reads `GET /employees/{id}`.
 
-**Pay timing:** `dateAdded` vs Oct 15 + missing fields → green / amber / red (off-cycle stub if after cutoff). Implemented in `data/domain/pay_timing.py` and mirrored in Validation Service.
+**Pay timing:** `dateAdded` and missing fields against the open cycle. The add-employee window closes on the 15th of the pay month. The engine input deadline stays the 22nd. Pay day is the 29th. Green / amber / red come from the server. Implemented in `data/domain/pay_timing.py` and mirrored in Validation Service.
 
 ### 10.2 Exception-first review
 
@@ -470,7 +470,7 @@ Full register → diff → match sources → auto-matched vs needs human check �
 
 ### 10.3 Notifications
 
-Calendar deadlines + open issues → Notification Service groups into one email → inbox via API → CTA opens Overview (deep link). Slack = V2.
+The Notification Service builds three calendars from the open cycle’s month: Global HR admin, each country HR admin, and employees who still have missing details. Subjects and dates use that month. The inbox filters by the signed-in persona. Add-details links open the missing-details form. Slack = V2. In-app alerts = V3.
 
 ---
 
@@ -482,9 +482,9 @@ Desktop 1440px. HR shell neutral; Payroll pages Multiplier-branded. Routes are *
 |---|---|---|
 | `/payroll/overview` | `payroll_overview` | overview |
 | `/payroll/actions` | `payroll_action_needed` | issues + resolve |
-| `/payroll/employees` | `payroll_employees` | employees |
+| `/payroll/employees` | `payroll_employees` | employees, scoped when a country admin is signed in |
 | `/payroll/review` | `payroll_review_approve` | review + approve |
-| `/payroll/notifications` | `payroll_notifications` | notifications |
+| `/people/notifications` | `payroll_notifications` | notifications for the signed-in persona (`/payroll/notifications` redirects) |
 | `/people/add` | `hr_tool_people_add_employee` | employees + documents |
 | `/people/:id` | `hr_tool_people_priya_nair` | employee + journey |
 
@@ -576,4 +576,4 @@ Field ownership stays in `config/rules.json`. Payroll-owned corrections write th
 | `data/schema.sql` + seed | Physical model for issue & cycle store |
 | `data/domain` + `tests/` | Executable business rules |
 
-Illustrative customer: **Acme Tech** · 120 employees · Workday · October 2026 cycle.
+Illustrative customer: **Acme Tech** · 120 employees · Workday · cycles October 2026 through January 2027. Global HR admin Maya Rao. Country admins in `config/company.json`.

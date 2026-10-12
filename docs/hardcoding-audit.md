@@ -10,7 +10,8 @@ Runtime behaviour must not branch on seed names, ids, or filenames. Values come 
 | Priya / James / issue_002 / rev_001 forks | connector, extraction, review, Actions `isJames` | inputs pipeline + kind-based pay_confirmation |
 | TOTAL_WITH_JOINERS = 122 | rules.py | live DB counts |
 | Filename DEMO_FALLBACK business logic | extraction filename table | regex parser + UI presets only |
-| Powered by Multiplier | Missing on People routes | Shell header from `company.payrollCaption` |
+| Powered by Multiplier | Repeated on People page headers | Sidebar caption on the Payroll group only, from `company.payrollCaption` |
+| Dashboard and mail dates | Fixed October labels | Open cycle month from `cycle.json`. Covered by `tests/test_dynamic_calendar.py` and `e2e/dynamic-calendar.spec.ts` |
 | Confirm toast under modal | z-50 both | Toast z-[70]; ConfirmModal errors for API |
 
 ## Still seed/test only
