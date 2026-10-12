@@ -1,7 +1,8 @@
 """Rules engine — pay timing, salary/tax, FnF, AI-check, outcome, field ownership.
 
 Everything the UI shows for a prototype date is derived here from the store +
-/config. The LLM and the UI never decide pay timing, deadlines or routing.
+/config. The LLM does not set pay timing, deadlines, or routing. It only decides
+which missing fields are required to pay someone.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ if str(ROOT / "data") not in sys.path:
 from domain.calendar_rules import (  # noqa: E402
     CUTOFF,
     NOV_CUTOFF,
+    PAYMENT_RETURNED,
     PAY_DATE,
     cycle_dates,
     next_cycle_dates,
@@ -88,9 +90,28 @@ def validate_field_format(field: str, value: str) -> Optional[str]:
     return result["error"]
 
 
+# Samples for people who are not in the seed map, so "Use demo value" works on any hire.
+_GENERIC_DEMO = {
+    "PAN": "ABCDE1234F",
+    "Bank account": "123456789012",
+    "IFSC": "HDFC0000123",
+    "Manager": "Ravi Kumar",
+    "Tax ID": "12345678901",
+    "CPF": "12345678909",
+    "NI number": "AB123456C",
+    "Sort code": "123456",
+    "IBAN": "DE89370400440532013000",
+    "PIX key": "sofia@example.com",
+    "Tax class": "1",
+}
+
+
 def demo_values(employee_id: str, fields: Optional[List[str]] = None) -> Dict[str, str]:
     vals = dict(SEED.get("demoValues", {}).get(employee_id, {}))
     if fields is not None:
+        for field in fields:
+            if field not in vals and field in _GENERIC_DEMO:
+                vals[field] = _GENERIC_DEMO[field]
         vals = {k: v for k, v in vals.items() if k in fields}
     return vals
 
@@ -195,16 +216,39 @@ def _indian_grouping(amount: float) -> str:
 def employee_status(emp: Dict[str, Any], exit_row: Optional[Dict[str, Any]], as_of: str) -> str:
     if not exit_row:
         return "Active"
-    return "Exited" if parse_date(as_of) >= parse_date(exit_row["last_working_day"]) else "Exiting"
+    return "Removed" if parse_date(as_of) >= parse_date(exit_row["last_working_day"]) else "Exiting"
+
+
+def payment_missing_fields(store: Store, emp: Dict[str, Any], as_of: str) -> List[str]:
+    """Missing fields the model says are required to pay this person. Manager is not one of them."""
+    from server.services import llm as llm_svc
+
+    missing = store.missing_fields(emp["id"], as_of)
+    required = set(llm_svc.payment_required_fields(emp.get("country") or "", missing))
+    return [f for f in missing if f in required]
+
+
+def _payment_completed_on(store: Store, emp: Dict[str, Any], as_of: str) -> Optional[str]:
+    """Date the last payment-required field was filled. A missing manager does not count."""
+    from server.services import llm as llm_svc
+
+    tracked = store.required_missing_fields(emp["id"])
+    required = set(llm_svc.payment_required_fields(emp.get("country") or "", tracked))
+    if not required:
+        return None
+    values = store.field_values(emp["id"], as_of)
+    if any(f not in values for f in required):
+        return None
+    return max(values[f]["as_of"] for f in required)
 
 
 def pay_flag(store: Store, emp: Dict[str, Any], as_of: str) -> PayFlag:
     exit_row = store.get_exit(emp["id"], as_of)
     return pay_timing(
         date_added=emp.get("date_added"),
-        missing_fields=store.missing_fields(emp["id"], as_of),
+        missing_fields=payment_missing_fields(store, emp, as_of),
         prototype_date=as_of,
-        fixed_on=store.fields_completed_on(emp["id"]),
+        fixed_on=_payment_completed_on(store, emp, as_of),
         exit_recorded_on=exit_row["recorded_on"] if exit_row else None,
     )
 
@@ -221,10 +265,46 @@ def fnf_for(emp: Dict[str, Any], exit_row: Dict[str, Any]) -> Dict[str, Any]:
     ).to_dict()
 
 
+def exit_pay_plan(emp: Dict[str, Any], exit_row: Dict[str, Any]) -> Dict[str, Any]:
+    """Days worked come from the last working day. After lock-in, that pay waits for next month."""
+    from domain.calendar_rules import cycle_containing_date, cycle_dates, cycle_for_new_input
+    from domain.salary import DAYS_IN_MONTH
+
+    settlement = fnf_for(emp, exit_row)
+    recorded_on = exit_row["recorded_on"]
+    held = cycle_containing_date(exit_row["last_working_day"])
+    pay = cycle_for_new_input(recorded_on)
+    on_hold = pay["key"] != held["key"]
+    held_month = str(held.get("label") or "").split()[0]
+    pay_month = str(pay.get("label") or "").split()[0]
+    days = int(settlement["daysWorked"])
+    money = fmt_money(emp["currency"], settlement["net"])
+    if on_hold:
+        message = (
+            f"On hold for {held_month}. "
+            f"Prorated pay for {days} of {DAYS_IN_MONTH} days ({money}) will be paid in {pay_month}."
+        )
+    else:
+        message = f"Prorated pay for {days} of {DAYS_IN_MONTH} days ({money}) will be paid in {pay_month}."
+    recorded = parse_date(recorded_on)
+    return {
+        "onHold": on_hold,
+        "daysWorked": days,
+        "daysInMonth": DAYS_IN_MONTH,
+        "payMonth": pay_month,
+        "heldMonth": held_month,
+        "lockDate": cycle_dates(recorded_on)["inputFinalisation"],
+        "payCycleKey": pay["key"],
+        "message": message,
+        "settlementCycle": "October" if recorded <= CUTOFF else pay_month,
+        "fnf": settlement,
+    }
+
+
 def exit_dto(emp: Dict[str, Any], exit_row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     if not exit_row:
         return None
-    recorded = parse_date(exit_row["recorded_on"])
+    plan = exit_pay_plan(emp, exit_row)
     return {
         "id": exit_row["id"],
         "lastWorkingDay": exit_row["last_working_day"],
@@ -234,9 +314,15 @@ def exit_dto(emp: Dict[str, Any], exit_row: Optional[Dict[str, Any]]) -> Optiona
         "leaveEncashmentDays": int(exit_row.get("leave_encashment_days") or 0),
         "recoveries": float(exit_row.get("recoveries") or 0),
         "recordedOn": exit_row["recorded_on"],
-        "settlementCycle": "October" if recorded <= CUTOFF else "November",
-        "message": "FnF paid in October payroll" if recorded <= CUTOFF else "FnF moves to November payroll",
-        "fnf": fnf_for(emp, exit_row),
+        "onHold": plan["onHold"],
+        "daysWorked": plan["daysWorked"],
+        "daysInMonth": plan["daysInMonth"],
+        "payMonth": plan["payMonth"],
+        "heldMonth": plan["heldMonth"],
+        "lockDate": plan["lockDate"],
+        "settlementCycle": plan["settlementCycle"],
+        "message": plan["message"],
+        "fnf": plan["fnf"],
     }
 
 
@@ -259,14 +345,14 @@ def outcome(store: Store, customer_id: str, as_of: str) -> Optional[Dict[str, An
     at_risk: List[Dict[str, Any]] = []
     returned: List[Dict[str, Any]] = []
     david_issue = store.get_issue("issue_david_return", as_of=as_of)
-    david_open = bool(david_issue and david_issue.get("status") == "open" and parse_date(as_of) >= parse_date("2026-10-29"))
+    david_open = bool(david_issue and david_issue.get("status") == "open" and parse_date(as_of) >= PAYMENT_RETURNED)
     for emp in emps:
         flag = pay_flag(store, emp, as_of)
         otps = one_time_payments(store, emp["id"], as_of)
         reason = _reason_label(flag, otps)
         row = {"id": emp["id"], "name": emp["name"], "country": emp["country"], "reason": reason}
         if emp["id"] == "emp_david" and david_open:
-            returned.append({**row, "reason": "Account closed – payment returned Oct 29"})
+            returned.append({**row, "reason": f"Account closed – payment returned {short_date(PAYMENT_RETURNED)}"})
             continue
         if flag.run == "At risk":
             at_risk.append(row)
@@ -307,7 +393,7 @@ def not_in_run(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
     emps = store.list_employees(customer_id, as_of=as_of)
     held = []
     for emp in emps:
-        if store.missing_fields(emp["id"], as_of):
+        if payment_missing_fields(store, emp, as_of):
             held.append({"id": emp["id"], "name": emp["name"], "country": emp["country"]})
     n = len(held)
     cd = cycle_dates(as_of)
@@ -395,7 +481,7 @@ def after_input_change(store: Store, cycle: Dict[str, Any], employee_id: Optiona
         store.reopen_signoff(cycle["id"], reopened_on=as_of, note="Sign-off reopened – 1 line changed")
         result["signoffReopened"] = True
     if employee_id:
-        line = store.review_line_for_employee(cycle["id"], employee_id)
+        line = store.current_review_line(cycle["id"], employee_id)
         if line and store.line_approval(line["id"]):
             store.revoke_line_approval(line["id"], revoked_on=as_of, reason=what)
             result["lineReopened"] = line["id"]

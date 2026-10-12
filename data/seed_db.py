@@ -277,9 +277,34 @@ def insert_issues(conn: sqlite3.Connection) -> None:
             """,
             (
                 i["id"], CYCLE_ID, i["title"], i["severity"], i.get("employeeId"), i["country"], i["owner"],
-                i["deadline"], i["source"], i["impact"], i.get("detail"), i.get("aiNote"), i.get("kind", "missing_fields"),
+                CYCLE_CFG["cycles"]["october"].get("inputDeadline") or i["deadline"],
+                i["source"], i["impact"], i.get("detail"), i.get("aiNote"), i.get("kind", "missing_fields"),
             ),
         )
+
+
+def mirror_hr_source(conn: sqlite3.Connection) -> None:
+    """Copy the seeded snapshot into the HR source and record the opening sync."""
+    conn.execute(
+        """
+        INSERT INTO hr_employees (
+          employee_id, base_salary, allowances, unpaid_leave_days, role, manager_name, status, updated_at, updated_by
+        )
+        SELECT id, base_salary, allowances, unpaid_leave_days, role, manager_name, status,
+               '2026-10-01T09:00:00', 'Workday'
+        FROM employees
+        """
+    )
+    cycle = conn.execute("SELECT id, customer_id FROM payroll_cycles ORDER BY id ASC LIMIT 1").fetchone()
+    conn.execute(
+        """
+        INSERT INTO sync_runs (
+          id, customer_id, cycle_id, trigger, status, synced_at, actor, added, changed, exited, summary
+        ) VALUES ('sync_seed', ?, ?, 'Manual', 'success', '2026-10-01T09:00:00', 'Workday', 0, 0, 0,
+                  '+0 added, 0 changed, 0 exited')
+        """,
+        (cycle[1], cycle[0]),
+    )
 
 
 def insert_reminders(conn: sqlite3.Connection) -> None:
@@ -406,6 +431,7 @@ def seed_database(db_path: Path, rng_seed: int = 42, quiet: bool = False) -> Non
         insert_reminders(conn)
         insert_documents(conn)
         insert_review_lines(conn, {e["id"]: e for e in named})
+        mirror_hr_source(conn)
         write_meta(conn, rng_seed)
         conn.commit()
         conn.execute("PRAGMA foreign_keys = ON")

@@ -1,44 +1,35 @@
 # Payroll Clarity — roadmap
 
-What the prototype does today, and what is still a later version. Requirements are in `PRD.md`. Screen rules are in `context.md`.
+What the prototype does, and what is still a later version. Requirements are in `PRD.md`. Screen rules are in `context.md`.
 
 ## Done
 
-### Payroll cycle
+### Cycle and sync
 
 - Prototype date drives every screen. Reset demo restores the seed.
-- Inputs close on the 15th. Calculation is the 16th. Review is the 17th–22nd. Pay is the 28th. November, December, and January follow the same pattern.
-- A new employee, bonus, or salary change on or before the 15th stays in this cycle. After the 15th it lands in the next cycle's review.
-- A salary change for someone already on the open review stays on that review and is marked approved.
-- The employee profile banner says which cycle pays the person, a bonus, and a salary change, including missing fields, exit, and a bank return.
+- People is the HR source. Payroll keeps a snapshot that updates on sync.
+- Manual sync is limited to one successful run per calendar day. The final sync is separate and can be repeated without duplicating funding or mail.
+- A failed sync does not replace the last good snapshot.
+- Input deadline, final sync, funding, submission, and pay date come from configuration. October uses 22, 23, 23, 25, and 28 October. November uses the same pattern.
+- Action needed and Review & approve share that deadline.
+- Changes synced after the deadline are marked Next cycle.
+- The stage tracker is Sync & resolve, Final sync, Funding, Submitted, Paid.
 
-### Action needed
+### Queues, mail, and pay
 
-- Open issues, with owner, severity, and country filter.
-- Employee reminders, including a real email when SMTP is set, and a saved notification when it is not.
-- Saving the last missing field resolves the issue and removes the row.
-- A bank return starts on 29 October. It is not treated as a missed October input. Saving the new bank account resolves it.
+- Action needed is missing or invalid required data. Saving a payroll-owned field rechecks the issue immediately.
+- Review & approve is the human check on compensation changes. Approving a line updates the live counts.
+- Unread mail is numbered, newest first, and stays read after refresh.
+- Input reminders are scheduled from the configured offsets and are skipped when nothing is open.
+- Funding estimates use gross pay plus configured employer contributions. The baseline and the final snapshot are stored. Variance splits into forex, rates, and other changes.
+- Pay day reports four non-overlapping outcomes, plus the existing returned-payment case.
+- Employee profile payroll figures are the last snapshot, with the sync time. HR saves confirm **Saved in HR tool**.
 
-### Review and approve
+### Already in the prototype
 
-- Review opens only inside the window. Before that the page explains when it opens.
-- Cards are live: changed lines = matched to a source + need your check.
-- Approving or undoing a line updates the cards. The table footer counts the rows on screen.
-- Unapproved lines warn that previous pay is deposited and the difference carries. The amount comes from current pay, not from a fixed list of people.
-- Sign-off is blocked until every line on the review is approved.
-
-### Notifications
-
-- Inbox is newest first.
-- Unread messages are numbered. The inbox and the navigation item show the unread count. Opening a message marks it read.
-- Input-deadline mail (12, 14 and 15 October) explains the cutoff, links to Action needed in one step, and links to a demo payroll input policy.
-- Employee reminder button is **Add my details**, with one arrow.
-
-### People and documents
-
-- Employee list with server pagination and live totals.
-- Add employee, one-time payment, salary edit, and exit, each with a confirmation that names the pay cycle.
-- Offer, bonus, and other documents can be uploaded. Google Drive is used when it is configured.
+- Employee list, documents, Google Drive when configured, and employee reminder forms.
+- Bank return for a closed account from 29 October, resolved when the new account is saved.
+- Illustrative data for India, the UK, Germany, and Brazil. The language model explains. It does not set the amount or the cycle.
 
 ## Not in this version
 
@@ -46,13 +37,12 @@ What the prototype does today, and what is still a later version. Requirements a
 |---|---|
 | Slack reminders | V2 |
 | AI assistant | V2 |
-| Write-back to the HR tool | V2 |
+| Write-back into Workday | V2 |
 | Mobile | V2 |
 | Bulk CSV upload | V2 |
 | Finance view | V3 |
 | Calendar view | V3 |
 | Guided fix steps | V3 |
 | Instant / off-cycle payment | Not available |
-| Fix in the HR tool, Correct the amount | Not built |
 
-Country payroll processing, funding, and payment stay simulated. The LLM explains; it does not set the pay amount or the cycle.
+Country payroll processing, funding collection, and payment stay simulated. Exchange rates and employer contribution rates in configuration are illustrative demo figures.

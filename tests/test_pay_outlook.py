@@ -38,9 +38,9 @@ def test_before_payday_never_says_paid_in_october(store):
 def test_after_payday_paid_or_not(store):
     from server.services.pay_outlook import pay_outlook
 
-    emps = store.list_employees("cust_acme", as_of="2026-10-28")
+    emps = store.list_employees("cust_acme", as_of="2026-10-29")
     gen = next(e for e in emps if str(e["id"]).startswith("emp_gen_"))
-    out = pay_outlook(store, gen, "2026-10-28")
+    out = pay_outlook(store, gen, "2026-10-29")
     assert out["status"] in ("paid", "not_paid", "returned", "held", "moves")
     if out["status"] == "paid":
         assert out["display"].startswith("Paid")

@@ -1,14 +1,69 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Check } from 'lucide-react'
 import { Button, EmptyState, PageHeader } from '@/components'
 import { formatIsoDate } from '@/features/payroll/lib/labels'
+import { personaCountry } from '@/features/persona'
+import { reviewCards } from '@/features/payroll/lib/scope'
 import { useAppStore } from '@/store'
-import type { ReviewLineDto } from '@/api/types'
+import type { ReviewLineDto, ReviewResponse } from '@/api/types'
+
+function countryCarry(
+  review: ReviewResponse | null,
+  country: string | null,
+  employees: { id: string; country: string }[],
+): ReviewResponse['ifUnapproved'] {
+  const block = review?.ifUnapproved
+  if (!block) return null
+  if (!country) return block
+  const ids = new Set(employees.filter((emp) => emp.country === country).map((emp) => emp.id))
+  const items = block.items.filter((item) => ids.has(item.employeeId))
+  if (!items.length) return null
+  return { ...block, items }
+}
+
+function countryNotInRun(review: ReviewResponse | null, country: string | null) {
+  const block = review?.notInRun
+  if (!block || block.count === 0) return null
+  if (!country) return block
+  const held = block.employees.filter((emp) => emp.country === country)
+  if (!held.length) return null
+  const rest = block.message.split('. ').slice(1).join('. ')
+  const lead = `${held.length} employee${held.length === 1 ? ' is' : 's are'} not in this run because data is missing.`
+  return {
+    ...block,
+    count: held.length,
+    employees: held,
+    message: rest ? `${lead} ${rest}` : lead,
+  }
+}
 
 function isRecovery(line: ReviewLineDto): boolean {
   if (line.requiresEmployeeNotified) return true
-  return /recovery|–|−|-/i.test(line.changeSummary) && /recovery/i.test(line.changeSummary + line.whyFlagged)
+  return /recovery|deductible/i.test(`${line.changeSummary} ${line.whyFlagged}`)
+}
+
+function CarryNotice({ block }: { block: ReviewResponse['ifUnapproved'] }) {
+  if (!block?.headline || block.items.length === 0) return null
+  return (
+    <div
+      data-testid="carry-notice"
+      className="rounded border border-status-warn-border bg-status-warn-bg px-4 py-3 text-[13px] text-status-warn-text"
+    >
+      <p className="font-medium">{block.headline}</p>
+      {block.items.length ? (
+        <ul className="mt-2 space-y-1">
+          {block.items.map((item) => (
+            <li key={`${item.employeeId}-${item.kind}`} data-testid={`carry-${item.employeeId}`}>
+              <span className="font-medium">{item.name}</span>
+              {' — '}
+              {item.note}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  )
 }
 
 function RowActions({
@@ -70,8 +125,21 @@ function RowActions({
 export function ReviewPage() {
   const asOf = useAppStore((s) => s.asOf)
   const review = useAppStore((s) => s.review)
+  const employees = useAppStore((s) => s.employees)
   const overview = useAppStore((s) => s.overview)
   const company = useAppStore((s) => s.company)
+  const persona = useAppStore((s) => s.persona)
+  const [params, setParams] = useSearchParams()
+  const lockedCountry = personaCountry(persona, company)
+  const countryParam = persona === 'global' ? params.get('country') || '' : persona
+  const countryName =
+    lockedCountry ||
+    ({ IN: 'India', UK: 'UK', DE: 'Germany', BR: 'Brazil' } as Record<string, string>)[countryParam] ||
+    ''
+  const cards = review ? reviewCards(review, employees, countryName || null) : null
+  const reviewLines = cards?.lines || []
+  const carry = countryCarry(review, countryName || null, employees)
+  const heldOut = countryNotInRun(review, countryName || null)
   const refreshReview = useAppStore((s) => s.refreshReview)
   const approveLine = useAppStore((s) => s.approveLine)
   const unapproveLine = useAppStore((s) => s.unapproveLine)
@@ -100,18 +168,16 @@ export function ReviewPage() {
     }
   }, [review, overview?.cycle.label])
 
-  const approvedCount = useMemo(
-    () => (review ? review.lines.filter((l) => l.approved).length : 0),
-    [review],
-  )
-  const totalLines = review?.lines.length ?? 0
-  const remaining = review?.remaining ?? Math.max(0, totalLines - approvedCount)
+  const approvedCount = cards?.approved ?? 0
+  const totalLines = reviewLines.length
+  const remaining = Math.max(0, totalLines - approvedCount)
   const progress = totalLines ? Math.round((approvedCount / totalLines) * 100) : 0
   const cycleMonth = (overview?.cycle.label || 'Payroll').replace(/\s*\d{4}\s*/, '').trim() || 'Payroll'
-  const employeesInRun =
-    overview?.cycle.employeeCount ??
-    overview?.countries.reduce((s, c) => s + c.employeeCount, 0) ??
-    0
+  const employeesInRun = countryName
+    ? (overview?.countries.find((row) => row.country === countryName)?.employeeCount ?? 0)
+    : (overview?.cycle.employeeCount ??
+      overview?.countries.reduce((sum, row) => sum + row.employeeCount, 0) ??
+      0)
 
   if (!review) {
     return (
@@ -139,6 +205,7 @@ export function ReviewPage() {
             Action needed →
           </Link>
         </p>
+        <CarryNotice block={carry} />
       </div>
     )
   }
@@ -173,9 +240,7 @@ export function ReviewPage() {
   }
 
   function applyLlmApproves() {
-    const targets = (review?.lines || []).filter(
-      (l) => !l.approved && l.llmDecision?.recommend === 'approve',
-    )
+    const targets = reviewLines.filter((l) => !l.approved && l.llmDecision?.recommend === 'approve')
     if (!targets.length) {
       pushToast('LLM did not recommend any lines to approve')
       return
@@ -241,7 +306,32 @@ export function ReviewPage() {
 
   return (
     <div className="relative flex flex-col gap-4 pb-28">
-      <PageHeader title="Review & approve" subtitle={review.header ?? ''} />
+      <PageHeader
+        title="Review & approve"
+        subtitle={review.header ?? ''}
+        actions={
+          <label className="flex items-center gap-1.5 text-xs text-text-secondary">
+            Country
+            <select
+              className="h-8 rounded border border-border bg-surface px-2 text-xs text-text-primary"
+              value={countryParam}
+              disabled={Boolean(lockedCountry)}
+              onChange={(event) => {
+                const next = new URLSearchParams(params)
+                if (event.target.value) next.set('country', event.target.value)
+                else next.delete('country')
+                setParams(next)
+              }}
+            >
+              <option value="">All</option>
+              <option value="IN">India</option>
+              <option value="UK">UK</option>
+              <option value="DE">Germany</option>
+              <option value="BR">Brazil</option>
+            </select>
+          </label>
+        }
+      />
       {review.signoff?.reopened ? (
         <p className="rounded border border-status-warn-border bg-status-warn-bg px-3 py-2 text-xs text-status-warn-text">
           {review.signoff.reopenedNote || 'Payroll approval reopened – 1 line changed'}
@@ -254,19 +344,19 @@ export function ReviewPage() {
             {
               to: '/people?filter=changed',
               label: 'Changed lines',
-              value: review.changedLines,
+              value: cards?.changed ?? 0,
               tip: 'Employees whose pay is different this cycle.',
             },
             {
               to: '/people?filter=reconciled',
               label: 'Matched to a source',
-              value: review.matchedLines,
+              value: cards?.matched ?? 0,
               tip: 'Multiplier found a record that explains the change.',
             },
             {
               to: '#review-table',
               label: 'Need your check',
-              value: review.needsHumanCheck,
+              value: cards?.needs ?? 0,
               tip: 'Changes with no matching source, or unusually large.',
               warn: true,
             },
@@ -305,9 +395,9 @@ export function ReviewPage() {
         })}
       </div>
 
-      {review.showOpenExtras && review.notInRun && review.notInRun.count > 0 ? (
+      {review.showOpenExtras && heldOut && heldOut.count > 0 ? (
         <p className="text-[13px] text-text-secondary">
-          <strong className="text-text-primary">{review.notInRun.message}</strong>{' '}
+          <strong className="text-text-primary">{heldOut.message}</strong>{' '}
           <Link to="/payroll/actions" className="text-brand hover:underline">
             View in Action needed
           </Link>
@@ -325,6 +415,8 @@ export function ReviewPage() {
           </Button>
         </div>
       ) : null}
+
+      <CarryNotice block={carry} />
 
       <div id="review-table" className="overflow-x-auto rounded border border-border bg-surface">
         <table className="w-full min-w-0 table-fixed border-collapse text-left">
@@ -347,7 +439,14 @@ export function ReviewPage() {
             </tr>
           </thead>
           <tbody>
-            {review.lines.map((line) => {
+            {reviewLines.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-3 py-8 text-center text-[13px] text-text-secondary">
+                  No issues{countryName ? ` for ${countryName}` : ''}.
+                </td>
+              </tr>
+            ) : null}
+            {reviewLines.map((line) => {
               const llm = line.llmDecision
               const llmApprove = llm?.recommend === 'approve'
               return (
@@ -365,7 +464,17 @@ export function ReviewPage() {
                     ({line.country})
                   </span>
                 </td>
-                <td className="px-3 py-2.5 tabular text-[13px]">{line.changeSummary}</td>
+                <td className="px-3 py-2.5 tabular text-[13px]">
+                  {line.changeSummary}
+                  {line.carryNote ? (
+                    <p
+                      className="mt-1 text-[11px] font-normal leading-snug text-amber-800"
+                      data-testid={`carry-note-${line.employeeId}`}
+                    >
+                      {line.carryNote}
+                    </p>
+                  ) : null}
+                </td>
                 <td className="px-3 py-2.5 text-[13px]">{line.whyFlagged}</td>
                 <td className="px-3 py-2.5 text-[13px]">{line.matchingSource}</td>
                 <td className="px-3 py-2.5 text-[12px]">
@@ -415,7 +524,9 @@ export function ReviewPage() {
             <div className="flex items-center justify-between gap-6">
               <div className="min-w-0 flex-1">
                 <p className="text-[13px] font-medium text-text-primary">
-                  {approvedCount} of {totalLines} lines approved
+                  {totalLines === 0
+                    ? 'No issues'
+                    : `${approvedCount} of ${totalLines} lines approved`}
                 </p>
                 <div className="mt-1.5 h-1.5 w-full max-w-md overflow-hidden rounded-full bg-slate-200">
                   <div
@@ -424,10 +535,12 @@ export function ReviewPage() {
                   />
                 </div>
                 <p className="mt-1.5 text-[11px] text-text-muted">
-                  Approving payroll authorises pay for {employeesInRun} employees and sends the
-                  funding request to finance.
+                  {countryName
+                    ? `${employeesInRun} employees in ${countryName}. Approve each line in this list.`
+                    : `Approving payroll authorises pay for ${employeesInRun} employees and sends the funding request to finance.`}
                 </p>
               </div>
+              {countryName ? null : (
               <Button
                 variant="primary"
                 className="h-9 shrink-0 px-4 text-sm"
@@ -441,6 +554,7 @@ export function ReviewPage() {
               >
                 Approve {cycleMonth} payroll
               </Button>
+              )}
             </div>
           )}
         </div>

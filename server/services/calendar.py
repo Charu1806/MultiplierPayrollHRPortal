@@ -13,7 +13,6 @@ from domain.calendar_rules import (  # noqa: E402
     APPROVAL,
     CALCULATION,
     CUTOFF,
-    FUNDING_DUE,
     NOV_APPROVAL,
     NOV_CUTOFF,
     NOV_OPEN,
@@ -21,7 +20,6 @@ from domain.calendar_rules import (  # noqa: E402
     PAY_DATE,
     REVIEW_CLOSE,
     REVIEW_OPEN,
-    SUBMITTED,
     approval_countdown,
     backdated_arrears_months,
     countdown_text,
@@ -81,14 +79,13 @@ def prototype_dates() -> Dict[str, Any]:
 
 def cycle_counts(store: Store, customer_id: str, as_of: str) -> Dict[str, int]:
     emps = store.list_employees(customer_id, as_of=as_of)
-    changed = sum(1 for e in emps if e.get("changed_this_cycle"))
-    matched = sum(1 for e in emps if e.get("matched_source"))
-    cycle = store.get_current_cycle(customer_id)
-    lines = store.review_lines(cycle["id"], as_of=as_of) if cycle else []
+    changed_emps = [e for e in emps if e.get("changed_this_cycle")]
+    matched = sum(1 for e in changed_emps if e.get("matched_source"))
+    changed = len(changed_emps)
     return {
         "changedLines": changed,
         "matchedLines": matched,
-        "needsHumanCheck": len(lines),
+        "needsHumanCheck": changed - matched,
         "employeeCount": len(emps),
     }
 
@@ -119,6 +116,9 @@ def cycle_view(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
             "label": cd["label"],
             "stage": stage,
             "inputFinalisation": cd["inputFinalisation"],
+            "inputDeadline": cd.get("inputDeadline") or cd["inputFinalisation"],
+            "finalSync": cd.get("finalSync") or cd.get("calculation"),
+            "fundingRequest": cd.get("fundingRequest") or cd.get("fundingDue"),
             "calculation": cd.get("calculation"),
             "reviewOpen": cd.get("reviewOpen"),
             "reviewClose": cd.get("reviewClose"),
@@ -153,10 +153,13 @@ def cycle_view(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
         "cutoffPassed": parse_date(as_of) > parse_date(cd["inputFinalisation"]),
         "inputsOpen": parse_date(as_of) <= parse_date(cd["inputFinalisation"]),
         "payDatePassed": parse_date(as_of) >= parse_date(cd["payDate"]),
-        "fundingVisible": (not in_nov) and parse_date(as_of) >= FUNDING_DUE,
-        "submittedVisible": (not in_nov) and parse_date(as_of) >= SUBMITTED,
+        "fundingVisible": (not in_nov) and parse_date(as_of) >= parse_date(cd.get("fundingDue") or cd.get("fundingRequest")),
+        "submittedVisible": (not in_nov) and bool(cd.get("submitted")) and parse_date(as_of) >= parse_date(cd["submitted"]),
         "dates": {
-            "cutoff": cd["inputFinalisation"],
+            "cutoff": cd.get("inputDeadline") or cd["inputFinalisation"],
+            "inputDeadline": cd.get("inputDeadline") or cd["inputFinalisation"],
+            "finalSync": cd.get("finalSync") or cd.get("calculation"),
+            "fundingRequest": cd.get("fundingRequest") or cd.get("fundingDue"),
             "calculation": cd.get("calculation"),
             "reviewOpen": cd.get("reviewOpen"),
             "reviewClose": cd.get("reviewClose"),

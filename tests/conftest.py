@@ -47,7 +47,7 @@ def baseline_issues():
             "employee_id": "emp_lena",
             "country": "Germany",
             "owner": "HR admin",
-            "deadline": "2026-10-15",
+            "deadline": "2026-10-22",
             "status": "open",
         },
         {
@@ -57,7 +57,7 @@ def baseline_issues():
             "employee_id": "emp_james",
             "country": "UK",
             "owner": "HR admin",
-            "deadline": "2026-10-15",
+            "deadline": "2026-10-22",
             "status": "open",
         },
         {
@@ -67,7 +67,7 @@ def baseline_issues():
             "employee_id": "emp_beatriz",
             "country": "Brazil",
             "owner": "HR admin",
-            "deadline": "2026-10-15",
+            "deadline": "2026-10-22",
             "status": "open",
         },
     ]

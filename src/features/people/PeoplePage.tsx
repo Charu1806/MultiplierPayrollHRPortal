@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Button, PageHeader, StatusChip } from '@/components'
 import { PeopleTabs } from '@/features/people/PeopleTabs'
-import { formatIsoDate } from '@/features/payroll/lib/labels'
+import { formatIsoDate, formatMoney } from '@/features/payroll/lib/labels'
 import { clarityApi } from '@/api/clarityClient'
+import { personaCountry } from '@/features/persona'
 import { useAppStore } from '@/store'
 import type { Country, EmployeeDto } from '@/api/types'
 
@@ -31,6 +32,14 @@ function payTone(emp: EmployeeDto): 'ok' | 'warn' | 'danger' | 'info' {
   return 'ok'
 }
 
+function hrCell(field: { state: string; value?: string | null; field?: string } | undefined): string {
+  if (!field || field.state === 'not_used') return '—'
+  if (field.state === 'not_recorded') return 'Not recorded'
+  if (field.state === 'missing') return 'Missing'
+  if (field.state === 'value' && field.value) return field.value
+  return 'On file'
+}
+
 function payText(emp: EmployeeDto): string {
   if (emp.payOutlook?.display) {
     return emp.payOutlook.note
@@ -40,14 +49,20 @@ function payText(emp: EmployeeDto): string {
   return emp.ifNoActionWillBePaid || emp.payTiming.message
 }
 
-export function PeoplePage() {
+export function PeoplePage({ variant = 'hr' }: { variant?: 'hr' | 'payroll' }) {
+  const showPayroll = variant === 'payroll'
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const asOf = useAppStore((s) => s.asOf)
+  const persona = useAppStore((s) => s.persona)
+  const company = useAppStore((s) => s.company)
+  const lockedCountry = personaCountry(persona, company)
   const overview = useAppStore((s) => s.overview)
   const pushToast = useAppStore((s) => s.pushToast)
   const askConfirm = useAppStore((s) => s.askConfirm)
+  const undoExit = useAppStore((s) => s.undoExit)
   const reopenReview = useAppStore((s) => s.reopenReview)
+  const [listVersion, setListVersion] = useState(0)
 
   const country = (params.get('country') as Country | null) || 'all'
   const action = params.get('action') || 'all'
@@ -61,6 +76,7 @@ export function PeoplePage() {
     : 25
 
   const [rows, setRows] = useState<EmployeeDto[]>([])
+  const [removed, setRemoved] = useState<EmployeeDto[]>([])
   const [total, setTotal] = useState(0)
   const [busy, setBusy] = useState(false)
 
@@ -77,7 +93,7 @@ export function PeoplePage() {
     setBusy(true)
     void clarityApi
       .getEmployees(asOf, {
-        country: country === 'all' ? undefined : country,
+        country: lockedCountry || (country === 'all' ? undefined : country),
         actionNeeded: action === 'yes' ? true : action === 'no' ? false : undefined,
         q: q || undefined,
         status: status === 'all' ? undefined : status,
@@ -88,6 +104,7 @@ export function PeoplePage() {
       .then((res) => {
         if (cancelled) return
         setRows(res.employees)
+        setRemoved(res.removed ?? [])
         setTotal(res.total ?? res.count)
       })
       .finally(() => {
@@ -96,7 +113,19 @@ export function PeoplePage() {
     return () => {
       cancelled = true
     }
-  }, [asOf, country, action, filter, q, status, page, pageSize])
+  }, [asOf, country, lockedCountry, action, filter, q, status, page, pageSize, listVersion])
+
+  function confirmUndo(emp: EmployeeDto) {
+    askConfirm({
+      title: 'Undo exit',
+      body: `Put ${emp.name} back on payroll? The exit and full and final payment come off Review & approve.`,
+      confirmLabel: 'Undo',
+      onConfirm: async () => {
+        await undoExit(emp.id)
+        setListVersion((v) => v + 1)
+      },
+    })
+  }
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
   const safePage = Math.min(page, totalPages)
@@ -117,10 +146,14 @@ export function PeoplePage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PeopleTabs />
+      {showPayroll ? null : <PeopleTabs />}
       <PageHeader
         title="Employees"
-        subtitle={`${total} in cycle · new joiners at the top`}
+        subtitle={
+          showPayroll
+            ? `${total} in the payroll snapshot · pay status is calculated here`
+            : `${total} in the HR system · synced from the connector`
+        }
       />
       {hint ? (
         <p className="rounded border border-status-info-border bg-status-info-bg px-3 py-2 text-xs text-status-info-text">
@@ -138,8 +171,10 @@ export function PeoplePage() {
               onChange={(e) => setParam('q', e.target.value)}
             />
             <select
-              className="h-8 rounded border border-border bg-surface px-2 text-xs"
-              value={country}
+              aria-label="Country"
+              className="h-8 w-[132px] rounded border border-border bg-surface px-2 text-xs"
+              value={lockedCountry || country}
+              disabled={Boolean(lockedCountry)}
               onChange={(e) => setParam('country', e.target.value)}
             >
               <option value="all">All countries</option>
@@ -149,17 +184,19 @@ export function PeoplePage() {
                 </option>
               ))}
             </select>
+            {showPayroll ? (
+              <select
+                className="h-8 rounded border border-border bg-surface px-2 text-xs"
+                value={action}
+                onChange={(e) => setParam('action', e.target.value)}
+              >
+                <option value="all">All action statuses</option>
+                <option value="yes">Action needed: Yes</option>
+                <option value="no">Action needed: No</option>
+              </select>
+            ) : null}
             <select
-              className="h-8 rounded border border-border bg-surface px-2 text-xs"
-              value={action}
-              onChange={(e) => setParam('action', e.target.value)}
-            >
-              <option value="all">All action statuses</option>
-              <option value="yes">Action needed: Yes</option>
-              <option value="no">Action needed: No</option>
-            </select>
-            <select
-              className="h-8 rounded border border-border bg-surface px-2 text-xs"
+              className="h-8 w-[148px] rounded border border-border bg-surface px-2 text-xs"
               value={filter}
               onChange={(e) => setParam('filter', e.target.value)}
             >
@@ -170,14 +207,14 @@ export function PeoplePage() {
               <option value="paid_october">Paid on last pay date</option>
             </select>
             <select
-              className="h-8 rounded border border-border bg-surface px-2 text-xs"
+              className="h-8 w-[112px] rounded border border-border bg-surface px-2 text-xs"
               value={status}
               onChange={(e) => setParam('status', e.target.value)}
             >
               <option value="all">Status: all</option>
               <option value="Active">Active</option>
               <option value="Exiting">Exiting</option>
-              <option value="Exited">Exited</option>
+              <option value="Removed">Removed</option>
             </select>
             <Button variant="secondary" onClick={() => setParams(new URLSearchParams())}>
               Reset
@@ -190,25 +227,23 @@ export function PeoplePage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full table-fixed border-collapse text-left">
-            <colgroup>
-              <col className="w-[22%]" />
-              <col className="w-[8%]" />
-              <col className="w-[16%]" />
-              <col className="w-[10%]" />
-              <col className="w-[18%]" />
-              <col className="w-[8%]" />
-              <col className="w-[18%]" />
-            </colgroup>
+          <table className="w-max min-w-full border-collapse text-left">
             <thead>
               <tr className="h-8 bg-surface-recessed text-[11px] font-medium uppercase tracking-wide text-text-secondary">
-                <th className="px-3 py-1 font-medium">Employee</th>
-                <th className="px-3 py-1 font-medium">Country</th>
-                <th className="px-3 py-1 font-medium">Role</th>
-                <th className="px-3 py-1 font-medium">Date added</th>
-                <th className="px-3 py-1 font-medium">Pay status</th>
-                <th className="px-3 py-1 font-medium">Action needed</th>
-                <th className="px-3 py-1 font-medium">Pay this cycle</th>
+                <th className="w-[168px] px-2 py-1 font-medium">Employee</th>
+                <th className="w-[72px] px-2 py-1 font-medium">Country</th>
+                <th className="w-[140px] px-2 py-1 font-medium">Role</th>
+                {showPayroll ? <th className="w-[88px] px-2 py-1 font-medium">Date added</th> : null}
+                {showPayroll ? null : <th className="w-[96px] px-2 py-1 font-medium">Base pay</th>}
+                {showPayroll ? null : <th className="w-[120px] px-2 py-1 font-medium">Tax ID</th>}
+                {showPayroll ? null : <th className="w-[100px] px-2 py-1 font-medium">Aadhaar</th>}
+                {showPayroll ? null : <th className="w-[110px] px-2 py-1 font-medium">Bank</th>}
+                {showPayroll ? null : <th className="w-[88px] px-2 py-1 font-medium">Insurance</th>}
+                {showPayroll ? null : <th className="w-[140px] px-2 py-1 font-medium">Employee adds</th>}
+                {showPayroll ? null : <th className="w-[180px] px-2 py-1 font-medium">Other details</th>}
+                {showPayroll ? <th className="w-[160px] px-2 py-1 font-medium">Pay status</th> : null}
+                {showPayroll ? <th className="w-[88px] px-2 py-1 font-medium">Action needed</th> : null}
+                {showPayroll ? <th className="w-[180px] px-2 py-1 font-medium">Pay this cycle</th> : null}
                 {showMatched ? <th className="px-3 py-1 font-medium">Matched source</th> : null}
                 {showMatched ? <th className="px-3 py-1 font-medium">Actions</th> : null}
               </tr>
@@ -226,7 +261,7 @@ export function PeoplePage() {
                       )
                     }
                   >
-                    <td className="px-3 py-2.5">
+                    <td className="w-[168px] max-w-[168px] px-2 py-2">
                       <div className="flex items-center gap-2.5">
                         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-surface-recessed text-[11px] font-semibold">
                           {initials(emp.name)}
@@ -237,40 +272,98 @@ export function PeoplePage() {
                               {emp.name}
                             </span>
                             {emp.isNew ? <StatusChip tone="info">New</StatusChip> : null}
+                            {emp.status === 'Removed' ? (
+                              <Button
+                                variant="secondary"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  confirmUndo(emp)
+                                }}
+                              >
+                                Undo
+                              </Button>
+                            ) : null}
                           </div>
                         </div>
                       </div>
                     </td>
-                    <td className="truncate px-3 py-2.5 text-[13px]" title={emp.country}>
+                    <td className="w-[72px] truncate px-2 py-2 text-[13px]" title={emp.country}>
                       {emp.country}
                     </td>
-                    <td className="truncate px-3 py-2.5 text-[13px] text-text-secondary" title={emp.role}>
+                    <td className="w-[140px] max-w-[140px] truncate px-2 py-2 text-[13px] text-text-secondary" title={emp.role}>
                       {emp.role}
                     </td>
-                    <td className="px-3 py-2.5 tabular text-[13px] text-text-secondary">
-                      {emp.dateAdded ? formatIsoDate(emp.dateAdded) : 'Before cycle'}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span
-                        className={`inline-block rounded border px-1.5 py-0.5 text-[11px] font-medium leading-snug ${flagClass[tone]}`}
-                        title={emp.payTiming.message}
-                      >
-                        {emp.payTiming.message}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <StatusChip tone={emp.actionNeeded ? 'warn' : 'ok'}>
-                        {emp.actionNeeded ? 'Yes' : 'No'}
-                      </StatusChip>
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span
-                        className={`inline-block rounded border px-1.5 py-0.5 text-[11px] font-medium leading-snug ${flagClass[tone]}`}
-                        title={payText(emp)}
-                      >
-                        {payText(emp)}
-                      </span>
-                    </td>
+                    {showPayroll ? (
+                      <td className="w-[88px] whitespace-nowrap px-2 py-2 tabular text-[13px] text-text-secondary">
+                        {emp.dateAdded ? formatIsoDate(emp.dateAdded) : 'Before cycle'}
+                      </td>
+                    ) : null}
+                    {showPayroll ? null : (
+                      <td className="w-[96px] whitespace-nowrap px-2 py-2 tabular text-[13px]">
+                        {formatMoney(emp.currency, emp.hrRecord?.basePay ?? emp.salary?.base ?? emp.monthlyNet)}
+                      </td>
+                    )}
+                    {showPayroll ? null : (
+                      <td className="w-[120px] max-w-[120px] truncate px-2 py-2 text-[13px]" title={emp.hrRecord?.identity.field}>
+                        <span className="text-text-muted">{emp.hrRecord?.identity.field ?? 'Tax ID'}</span>
+                        <span className="mt-0.5 block text-text-primary">{hrCell(emp.hrRecord?.identity)}</span>
+                      </td>
+                    )}
+                    {showPayroll ? null : (
+                      <td className="w-[100px] whitespace-nowrap px-2 py-2 text-[13px] text-text-secondary">
+                        {hrCell(emp.hrRecord?.aadhaar)}
+                      </td>
+                    )}
+                    {showPayroll ? null : (
+                      <td className="w-[110px] max-w-[110px] truncate px-2 py-2 text-[13px]" title={emp.hrRecord?.bank.field}>
+                        <span className="text-text-muted">{emp.hrRecord?.bank.field ?? 'Bank'}</span>
+                        <span className="mt-0.5 block text-text-primary">{hrCell(emp.hrRecord?.bank)}</span>
+                      </td>
+                    )}
+                    {showPayroll ? null : (
+                      <td className="w-[88px] whitespace-nowrap px-2 py-2 text-[13px]">
+                        {emp.hrRecord?.insurance === 'added' ? 'Added' : 'Not added'}
+                      </td>
+                    )}
+                    {showPayroll ? null : (
+                      <td className="w-[140px] max-w-[140px] truncate px-2 py-2 text-[13px] text-text-secondary" title={(emp.hrRecord?.employeeAdds ?? []).map((row) => row.field).join(', ')}>
+                        {emp.hrRecord?.employeeAdds?.length
+                          ? emp.hrRecord.employeeAdds.map((row) => row.field).join(', ')
+                          : 'None'}
+                      </td>
+                    )}
+                    {showPayroll ? null : (
+                      <td className="w-[180px] max-w-[180px] truncate px-2 py-2 text-[13px] text-text-secondary" title={emp.hrRecord?.other}>
+                        {emp.hrRecord?.other || '—'}
+                      </td>
+                    )}
+                    {showPayroll ? (
+                      <td className="px-3 py-2.5">
+                        <span
+                          className={`inline-block rounded border px-1.5 py-0.5 text-[11px] font-medium leading-snug ${flagClass[tone]}`}
+                          title={emp.payTiming.message}
+                        >
+                          {emp.payTiming.message}
+                        </span>
+                      </td>
+                    ) : null}
+                    {showPayroll ? (
+                      <td className="px-3 py-2.5">
+                        <StatusChip tone={emp.actionNeeded ? 'warn' : 'ok'}>
+                          {emp.actionNeeded ? 'Yes' : 'No'}
+                        </StatusChip>
+                      </td>
+                    ) : null}
+                    {showPayroll ? (
+                      <td className="px-3 py-2.5">
+                        <span
+                          className={`inline-block rounded border px-1.5 py-0.5 text-[11px] font-medium leading-snug ${flagClass[tone]}`}
+                          title={payText(emp)}
+                        >
+                          {payText(emp)}
+                        </span>
+                      </td>
+                    ) : null}
                     {showMatched ? (
                       <td className="truncate px-3 py-2.5 text-[13px] text-text-secondary" title={emp.matchedSource ?? ''}>
                         {emp.matchedSource ?? '—'}
@@ -305,6 +398,35 @@ export function PeoplePage() {
             </tbody>
           </table>
         </div>
+
+        {removed.length ? (
+          <div className="border-t border-border px-3 py-3" data-testid="removed-employees">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-text-muted">Removed</p>
+            <ul className="mt-2 space-y-2">
+              {removed.map((emp) => {
+                const net = (emp.exit as { fnf?: { net?: number } } | null)?.fnf?.net
+                return (
+                  <li key={emp.id} className="flex flex-wrap items-center justify-between gap-2 text-[13px]">
+                    <button
+                      type="button"
+                      className="font-medium text-text-primary hover:underline"
+                      onClick={() => navigate(`/people/${emp.id}`)}
+                    >
+                      {emp.name}
+                    </button>
+                    <span className="text-text-secondary">
+                      Exit
+                      {net != null ? ` · full and final ${formatMoney(emp.currency, net)}` : ''}
+                    </span>
+                    <Button variant="secondary" onClick={() => confirmUndo(emp)}>
+                      Undo
+                    </Button>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        ) : null}
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-3 py-2.5">
           <p
@@ -357,10 +479,13 @@ export function PeoplePage() {
           </div>
         </div>
 
-        <p className="border-t border-border px-3 py-2.5 text-xs text-text-secondary">
-          Changes added on or before the input finalisation date are included in this run. Later
-          changes move to the next cycle.
-        </p>
+        {showPayroll ? (
+          <p className="border-t border-border px-3 py-2.5 text-xs text-text-secondary">
+            Pay status, action needed, and pay this cycle are payroll results. They update when you
+            sync from the connector. Changes added on or before the input deadline are included in
+            this run.
+          </p>
+        ) : null}
       </div>
     </div>
   )

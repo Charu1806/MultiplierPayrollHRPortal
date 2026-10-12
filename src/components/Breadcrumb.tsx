@@ -3,17 +3,14 @@ import { useAppStore } from '@/store'
 
 export type Crumb = { label: string; to?: string }
 
-const TOP_LEVEL = new Set([
-  '/payroll/overview',
-  '/payroll/actions',
-  '/payroll/review',
-  '/payroll/notifications',
-  '/people',
-])
+const TOP_LEVEL = new Set(['/payroll/overview', '/people'])
 
 function buildCrumbs(pathname: string, employeeName?: string | null): Crumb[] {
   const hr: Crumb = { label: 'HR workspace', to: '/payroll/overview' }
 
+  if (pathname.startsWith('/payroll/employees')) {
+    return [hr, { label: 'Payroll', to: '/payroll/overview' }, { label: 'Employees' }]
+  }
   if (pathname.startsWith('/payroll/overview')) {
     return [hr, { label: 'Payroll', to: '/payroll/overview' }, { label: 'Overview' }]
   }
@@ -23,8 +20,16 @@ function buildCrumbs(pathname: string, employeeName?: string | null): Crumb[] {
   if (pathname.startsWith('/payroll/review')) {
     return [hr, { label: 'Payroll', to: '/payroll/overview' }, { label: 'Review & approve' }]
   }
-  if (pathname.startsWith('/payroll/notifications')) {
-    return [hr, { label: 'Payroll', to: '/payroll/overview' }, { label: 'Notifications' }]
+  if (pathname.startsWith('/people/notifications')) {
+    return [hr, { label: 'People', to: '/people' }, { label: 'Notifications' }]
+  }
+  if (pathname.startsWith('/payroll/input-policy')) {
+    return [
+      hr,
+      { label: 'Payroll', to: '/payroll/overview' },
+      { label: 'Notifications', to: '/people/notifications' },
+      { label: 'Payroll input policy' },
+    ]
   }
   if (pathname === '/people' || pathname === '/people/') {
     return [hr, { label: 'Employees', to: '/people' }, { label: 'All employees' }]

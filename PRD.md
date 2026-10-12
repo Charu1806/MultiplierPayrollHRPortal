@@ -1,66 +1,73 @@
 # Payroll Clarity — product requirements
 
-Requirements for the working HR prototype. Names, dates and screen rules stay in `context.md`. This file records the decisions that the prototype now implements.
+People is the customer's HR system. Multiplier Payroll is a separate workflow with its own snapshot of that data. Names, dates, and screen rules stay in `context.md`.
 
 ## Problem
 
-HR cannot see, before payday, whether a new employee, a bonus, a salary change, or a missing detail will be paid in this cycle. The Payroll tab has to say what is still open, what it will do to pay, and where to fix it.
+HR cannot see, before payday, which Workday changes have reached payroll, which employees are blocked, and what still needs a human decision. Payroll readiness, exceptions, approvals, funding, and payment outcomes have to describe the same cycle.
 
-## Users
+## Ownership
 
-- **HR admin** (Maya Rao) works in the Payroll tab inside the HR tool.
-- **Employee** receives a reminder and can add missing details.
-- **Finance** receives the funding note. Finance does not edit payroll inputs.
+- **HR (Workday, simulated)** owns employment, salary, bonuses, leave, manager, and other compensation changes. Saving them confirms **Saved in HR tool**. The payroll snapshot does not change until sync.
+- **Payroll** owns tax identifiers and bank details where the field model assigns them to the employee or to Multiplier. Saving them revalidates that issue immediately.
+- One field has one owner. The owner list is `config/rules.json`.
 
-## Payroll input cutoff
+## Sync
 
-Inputs for a cycle close on the 15th.
+A **Sync from Workday** action sits in the Payroll header. It shows the last successful time, whether the run was Manual or Final, who ran it, and a short change summary.
 
-- On or before the 15th, a new employee, a bonus, or a salary change belongs to this cycle and to this cycle's review.
-- After the 15th, that input belongs to the next cycle. It appears on that cycle's review, which opens on the 17th. It does not appear on the locked month.
-- Exception: a salary change for someone who already has a row on the open review stays on that review. The row is kept, marked approved, and Matched to a source increases.
-- The employee profile shows a banner that says whether the person, a bonus, and a salary change will be paid, and in which cycle. Missing required fields hold that person. A bank return has its own sentence.
+- Manual full sync runs at most once per calendar day (`sync.maxPerDay`). It stays available after the input deadline, including on the October 23 final-sync day.
+- The scheduled final sync does not use that daily allowance. Running it again does not duplicate change events, the funding snapshot, or the finance email.
+- A failed sync keeps the previous snapshot and the previous success timestamp.
+- A targeted refresh updates one employee from the HR source. It is not a full sync and does not use the daily allowance.
+- The timestamp uses the prototype date and the real time of day.
+
+## Cycle
+
+Both Action needed and Review & approve use the input deadline.
+
+| Cycle | Input deadline | Final sync | Funding request | Submitted | Pay date |
+|---|---|---|---|---|---|
+| October 2026 | Oct 22 | Oct 23 | Oct 23 | Oct 25 | Oct 28 |
+| November 2026 | Nov 22 | Nov 23 | Nov 23 | Nov 25 | Nov 28 |
+
+Stages are **Sync & resolve → Final sync → Funding → Submitted → Paid**.
+
+A change is in the current cycle only when Multiplier has synced and validated it on or before the deadline and required data and approvals are satisfied. Anything later still syncs, and is marked **Next cycle**. It is not included in the current payroll.
+
+## Overview
+
+Before the deadline, headline counts are distinct employees and always add up:
+
+`Changed employees = Need action + Need approval + Matched automatically`
+
+Need action wins over need approval, which wins over matched. Missing mandatory data stays in Need action until the data is complete. Issue rows and change events are counted separately from those headlines.
+
+After the final sync, the page shows funding status. After pay day, it shows the payment outcome categories below. If the cycle has never synced, the page shows an empty state and the sync action.
+
+## Queues
+
+**Action needed** lists missing, invalid, or incomplete required data, with the owner, the deadline, and a way to fix it. HR-owned fields link to the HR record. Payroll-owned fields use the existing correction flow.
+
+**Review & approve** lists compensation changes that need a person: new joiners under policy, bonuses, salary increases and decreases, and unpaid leave or arrears when the rules say so. Actions are Approve, pay the previous amount when the rules allow it, and Fix in HR tool. Multiplier does not edit HR-owned amounts in place. An unexplained change needs a reason before approval. The model may flag a line. It does not approve pay.
+
+## Funding and pay day
+
+Required funding is gross pay for eligible employees plus the configured employer contribution, in the company's funding currency. Fees are not included. The first sync stores a baseline. Final sync stores one final snapshot and notifies finance once. Variance splits into forex, employer contribution rates, and other changes, and those parts add up to the total.
+
+On pay day the headline categories do not overlap:
+
+1. Paid successfully.
+2. Paid at the previous salary because approval was missing.
+3. Eligible but not paid because inputs were missing.
+4. Added after cutoff, with the prorated amount for the next cycle.
+
+A returned payment, including David Müller from 29 October, stays on its own existing path and is not also counted in those four.
 
 ## Notifications
 
-HR mail about the input deadline does not pretend the queue is empty, and it does not list every open item.
-
-- **12 October:** "3 days left to add payroll inputs".
-- **14 October:** "Cutoff tomorrow for adding payroll inputs".
-- **15 October:** "Cutoff today for adding payroll inputs".
-- The body says inputs close on 15 October. If an action is still open, or a new employee, salary change, or bonus is not added by then, that employee is affected. Pay may move entirely, or only in part, to the next cycle.
-- **What to do** is one step: "Resolve actions in Action needed". It opens Action needed.
-- **Payroll input policy** is a demo link. The page explains the cutoff. It does not change pay.
-- The inbox is newest first, including mail created on the same day.
-- Unread messages are numbered 1, 2, 3 from the top. The inbox and the Notifications navigation item show how many are unread. Opening a message marks it read. The read mark is stored.
-
-Employee reminders keep a single **Add my details** button.
-
-## Review and approve
-
-The three cards are calculated from the employees and from which lines are approved. They are not a fixed 38 / 32 / 6.
-
-- Changed lines, Matched to a source, and Need your check always add up.
-- Approving a line moves that person from Need your check into Matched. Undoing the approval moves them back.
-- The footer counts the rows in the table ("4 of 6 lines approved"). Need your check counts every unmatched change, including people who are not in that short table.
-- The warning under the cards lists only lines that are still unapproved. The amount is the difference between last approved pay and this cycle: salary, allowances, one-time payments, and unpaid leave. A higher amount carries as an arrear. A lower amount carries as a deductible.
-- Editing pay changes that amount on this review and on the next cycle. Approving the line removes the person from both.
-
-## Action needed
-
-- Missing details that hold pay stay until the fields are saved. Saving the last required field resolves the issue and removes the row.
-- A payment returned by the bank is not a missed October input. It appears from 29 October, after payday. It is not labelled "Carried over" and it does not say "Missed October pay".
-- Saving the new bank account resolves that return and removes it from Action needed. On a date before the account was saved, the row is still there.
-
-## Out of scope
-
-Slack, the AI assistant, the finance view, the calendar view, mobile, write-back to the HR tool, and instant off-cycle payment stay as later versions. They are visible and not built.
+Email is the live channel. Slack stays a later version. Reminders use `reminders.daysBefore` (3, 1, and 0 days before the input deadline) and are sent only when something is still open. Final sync, funding, pay day, and the next cycle opening each send once.
 
 ## Acceptance
 
-- Input-deadline mail names the cutoff and does not list each open issue.
-- Unread mail stays numbered until it is opened.
-- A salary confirmed on the employee profile during the open review stays approved, and the cards still add up.
-- A joiner, bonus, or salary change saved after the 15th shows on the next review, except a salary change that is already on the open review.
-- Review cards change when a line is approved or when pay is edited. November carry uses the edited amount.
-- After the bank account on a returned payment is saved, that row is gone from Action needed.
+The checks in the implementation brief are covered by `tests/test_sync_lifecycle.py` together with the existing suite: HR edits stay off the snapshot until sync, sync failure rolls back, the daily limit and the idempotent final sync hold, late changes are Next cycle, headline counts do not double-count an employee, funding variance reconciles, and pay-day categories do not overlap.

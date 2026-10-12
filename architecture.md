@@ -14,7 +14,8 @@ Sources: `Payroll_Clarity_PRD_final_touse.docx`, `context.md`, Stitch UI, `DESIG
 | Shared issue model | Every surface (tab, panel, email) reads the same issues from the cycle store |
 | Hold affected employees only | Blocking never freezes the whole payroll run |
 | AI explains; engine decides pay | Document/AI services never write final pay amounts |
-| Stage-aligned services | Calendar → Connectors → Validation → Review → Funding → Submitted → Paid |
+| Stage-aligned services | Calendar → Sync → Validation → Review → Funding → Submitted → Paid |
+| HR source is not the payroll snapshot | People writes HR-owned fields to the HR tables. Multiplier reads them only through sync or a targeted refresh |
 | Embed-first | Primary UI is inside the HR tool; Multiplier dashboard is the fallback |
 
 **Design choices (PRD)**
@@ -555,7 +556,17 @@ Edge-case rules are locked in `tests/` + `data/domain/` and must hold in service
 
 ---
 
-## 15. Source map
+## 15. Sync, snapshot, and funding
+
+People writes HR-owned changes to `hr_employees`. `employees` is the Multiplier snapshot. `sync_runs` and `sync_changes` record each full sync. `funding_snapshots` stores the first-sync baseline and the final estimate.
+
+`server/services/sync.py` compares the HR source with the snapshot, applies only changes received on or before the configured input deadline, and then reuses the existing salary, review, and issue services. Later changes are stored as Next cycle and are not included in the current run. The final sync (`trigger = Final`) is idempotent. A failed attempt rolls back and does not move `last successful sync`.
+
+Funding (`server/services/funding.py`) is gross pay plus the configured employer contribution, converted into the company funding currency. Fees are out of scope. Variance against the baseline splits into forex, employer-rate changes, and other (headcount and compensation) without overlap. Rates in config are illustrative.
+
+Field ownership stays in `config/rules.json`. Payroll-owned corrections write the payroll record and revalidate immediately. HR-owned corrections wait for sync or `POST /api/sync/refresh`.
+
+## 16. Source map
 
 | Source | Contribution |
 |---|---|

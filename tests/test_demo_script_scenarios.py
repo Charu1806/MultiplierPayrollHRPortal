@@ -16,8 +16,8 @@ def test_scene1_oct12_email_then_overview_count(baseline_issues, baseline_emails
     assert len(visible) == 1
     assert visible[0]["action_count"] == 3
     assert len(open_issues(baseline_issues)) == 3
-    assert countdown_text("2026-10-12") == "3 days left"
-    assert stage_for_date("2026-10-12") == "Input finalisation"
+    assert countdown_text("2026-10-12") == "10 days left"
+    assert stage_for_date("2026-10-12") == "Inputs & review"
 
 
 def test_scene2_fix_lena_drops_count_germany_on_track(baseline_issues):
@@ -64,9 +64,9 @@ def test_scene5_bonus_letter_fixture_amount(conn):
 
 def test_scene6_arjun_after_cutoff_and_priya_moved():
     arjun = pay_timing(
-        date_added="2026-10-17",
+        date_added="2026-10-23",
         missing_fields=[],
-        prototype_date="2026-10-17",
+        prototype_date="2026-10-23",
     )
     assert arjun.level == "red"
     assert arjun.show_off_cycle_stub is True
@@ -74,9 +74,9 @@ def test_scene6_arjun_after_cutoff_and_priya_moved():
     priya = pay_timing(
         date_added="2026-10-13",
         missing_fields=["PAN", "Bank account"],
-        prototype_date="2026-10-17",
+        prototype_date="2026-10-23",
     )
-    assert priya.message == "Moved to November · fix by Nov 15"
+    assert priya.message == "Moved to November · fix by Nov 22"
 
 
 def test_scene7_review_totals_and_blocking_gate(conn, baseline_issues):
@@ -103,4 +103,4 @@ def test_session_persistence_resolutions_survive_date_change(baseline_issues):
     """User fixes persist across prototype date changes within a session."""
     after = resolve_issue(baseline_issues, "issue_001")
     assert len(open_issues(after)) == 2
-    assert stage_for_date("2026-10-22") == "Review"
+    assert stage_for_date("2026-10-22") == "Inputs & review"

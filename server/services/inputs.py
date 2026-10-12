@@ -197,7 +197,7 @@ def _pay_edit_landing_cycle(
     if payroll_approved or window == "closed":
         landing = next_cycle_dates(as_of)
         return landing, False
-    if window == "open" and db_cycle and store.review_line_for_employee(db_cycle["id"], emp["id"]):
+    if window == "open" and db_cycle and store.current_review_line(db_cycle["id"], emp["id"]):
         return current, True
     return next_cycle_dates(as_of), False
 
@@ -330,7 +330,13 @@ def sync_issues_from_findings(
             title_bits.append(", ".join(hr_fields))
         title = "Missing " + " and ".join(title_bits) if title_bits else "Missing required fields"
         owner = "Employee" if emp_fields and not hr_fields else ("HR admin" if hr_fields and not emp_fields else "HR admin")
-        severity = "blocking"
+        pay_missing = rules_svc.payment_missing_fields(store, emp, as_of)
+        blocks_pay = bool(pay_missing)
+        severity = "blocking" if blocks_pay else "needs_confirmation"
+        if blocks_pay:
+            impact = f"{emp['name']} cannot be paid until {', '.join(pay_missing)} are added."
+        else:
+            impact = f"{', '.join(to_flag)} still needed. This does not hold {emp['name']}'s pay."
         payload = {
             "kind": "missing_data",
             "title": title,
@@ -340,7 +346,7 @@ def sync_issues_from_findings(
             "owner": owner,
             "deadline": deadline,
             "source": "Validation",
-            "impact": f"{emp['name']} cannot be paid until required fields are complete.",
+            "impact": impact,
             "detail": title,
             "status": "open",
             "created_on": as_of,
@@ -576,11 +582,19 @@ def add_one_time_payment(
     return dto
 
 
-def _maybe_resolve_pay_confirmation(store: Store, emp: Dict[str, Any], as_of: str) -> None:
-    """If employee has open pay_confirmation and base≈september with a bonus OTP, resolve it."""
+def resolve_open_pay_confirmation(
+    store: Store,
+    emp: Dict[str, Any],
+    as_of: str,
+    *,
+    resolution_log: str,
+    matching_source: str,
+    change_summary: Optional[str] = None,
+) -> bool:
+    """Close an open salary-spike issue and record what proved the new pay."""
     cycle = store.get_current_cycle(emp["customer_id"])
     if not cycle:
-        return
+        return False
     issues = store.list_issues(cycle["id"], status="open", as_of=as_of)
     pc = next(
         (
@@ -591,27 +605,40 @@ def _maybe_resolve_pay_confirmation(store: Store, emp: Dict[str, Any], as_of: st
         None,
     )
     if not pc:
-        return
+        return False
+    store.resolve_issue(
+        pc["id"],
+        resolved_by="HR admin",
+        resolved_at=as_of,
+        resolution_log=resolution_log,
+    )
+    line = store.current_review_line(cycle["id"], emp["id"])
+    if line:
+        fields: Dict[str, Any] = {"matching_source": matching_source}
+        if change_summary:
+            fields["change_summary"] = change_summary
+        store.update_review_line(line["id"], **fields)
+    return True
+
+
+def _maybe_resolve_pay_confirmation(store: Store, emp: Dict[str, Any], as_of: str) -> None:
+    """If employee has open pay_confirmation and base≈september with a bonus OTP, resolve it."""
     sept = float(emp.get("september_pay") or 0)
     base = float(emp.get("base_salary") or 0)
     otps = store.one_time_payments(emp["id"], as_of)
     has_bonus = any((p.get("type") == "Bonus") or ("bonus" in (p.get("label") or "").lower()) for p in otps)
-    if has_bonus and abs(base - sept) < 0.5:
-        store.resolve_issue(
-            pc["id"],
-            resolved_by="HR admin",
-            resolved_at=as_of,
-            resolution_log=f"Salary structure split (base + bonus) by HR admin, {as_of}",
-        )
-        line = store.review_line_for_employee(cycle["id"], emp["id"])
-        if line:
-            bonus = next((p for p in otps if p.get("type") == "Bonus" or "bonus" in (p.get("label") or "").lower()), None)
-            amt = rules_svc.fmt_money(emp["currency"], float(bonus["amount"])) if bonus else ""
-            store.update_review_line(
-                line["id"],
-                matching_source=f"Bonus letter, one-off {amt}".strip(),
-                change_summary=f"{rules_svc.fmt_money(emp['currency'], sept)} + {amt} bonus".strip(),
-            )
+    if not (has_bonus and abs(base - sept) < 0.5):
+        return
+    bonus = next((p for p in otps if p.get("type") == "Bonus" or "bonus" in (p.get("label") or "").lower()), None)
+    amt = rules_svc.fmt_money(emp["currency"], float(bonus["amount"])) if bonus else ""
+    resolve_open_pay_confirmation(
+        store,
+        emp,
+        as_of,
+        resolution_log=f"Salary structure split (base + bonus) by HR admin, {as_of}",
+        matching_source=f"Bonus letter, one-off {amt}".strip(),
+        change_summary=f"{rules_svc.fmt_money(emp['currency'], sept)} + {amt} bonus".strip(),
+    )
 
 
 def record_exit(
@@ -627,22 +654,13 @@ def record_exit(
     emp = store.get_employee(employee_id)
     if not emp or emp["customer_id"] != customer_id:
         raise LookupError("employee_not_found")
-    lwd = body.get("lastWorkingDay") or body.get("last_working_day")
+    lwd = body.get("lastWorkingDay") or body.get("last_working_day") or as_of
     if not lwd:
         raise ValueError("lastWorkingDay is required")
-    input_cycle = cycle_for_new_input(as_of)
     lwd_cycle = cycle_containing_date(lwd)
-    # Prefer LWD cycle while still before/on LWD (mid-month late inputs still FnF that month).
-    # If recorded after both the LWD cycle cutoff and the LWD itself → land in input cycle + late_exit.
-    if parse_date(as_of) > parse_date(lwd_cycle["inputFinalisation"]) and parse_date(as_of) > parse_date(lwd):
-        fnf_cycle = input_cycle
-        flags = ["late_exit"] if input_cycle["key"] != lwd_cycle["key"] else []
-    else:
-        fnf_cycle = lwd_cycle
-        flags = []
-        if parse_date(as_of) > parse_date(lwd_cycle["inputFinalisation"]):
-            # Recorded after cutoff but before/on LWD — still that cycle's FnF
-            pass
+    # An exit is an input. After that month's lock-in date, this month is on hold and pay lands next month.
+    fnf_cycle = cycle_for_new_input(as_of)
+    flags = ["late_exit"] if fnf_cycle["key"] != lwd_cycle["key"] else []
 
     hire = emp.get("hire_date")
     if hire and parse_date(lwd) < parse_date(hire):
@@ -661,8 +679,15 @@ def record_exit(
         recorded_on=as_of,
         source="Edited by HR admin",
     )
-    status = rules_svc.employee_status(emp, store.get_exit(employee_id, as_of), as_of)
-    store.update_employee_fields(employee_id, status=status, edited_by_you=1, changed_this_cycle=1)
+    exit_row = store.get_exit(employee_id, as_of)
+    status = rules_svc.employee_status(emp, exit_row, as_of)
+    # The employees.status check allows Exited; the API still says Removed once the last day has passed.
+    stored_status = "Exited" if status == "Removed" else status
+    store.update_employee_fields(employee_id, status=stored_status, edited_by_you=1, changed_this_cycle=1)
+    if exit_row:
+        from server.services.review import upsert_exit_review_line
+
+        upsert_exit_review_line(store, emp, exit_row, as_of)
     db_cycle = store.get_current_cycle(customer_id)
     rules_svc.after_input_change(store, db_cycle, employee_id, as_of=as_of, what="exit recorded")
 
@@ -673,3 +698,30 @@ def record_exit(
         "confirmationMessage": confirmation_message(fnf_cycle, prior_cutoff=as_of),
     }
     return dto
+
+
+def undo_exit(
+    store: Store,
+    employee_id: str,
+    *,
+    as_of: str,
+    customer_id: str,
+) -> Dict[str, Any]:
+    from server.services.review import delete_exit_review_line
+    from server.services.validation import get_employee_detail
+
+    emp = store.get_employee(employee_id)
+    if not emp or emp["customer_id"] != customer_id:
+        raise LookupError("employee_not_found")
+    if not store.get_exit(employee_id, as_of):
+        raise ValueError("This employee has no exit to undo")
+    delete_exit_review_line(store, emp, as_of)
+    store.delete_exits(employee_id)
+    other_edits = abs(float(emp.get("base_salary") or 0) - float(emp.get("september_pay") or 0)) > 0.5
+    other_edits = other_edits or bool(store.one_time_payments(employee_id, as_of))
+    updates: Dict[str, Any] = {"status": "Active"}
+    if not other_edits:
+        updates["edited_by_you"] = 0
+        updates["changed_this_cycle"] = 0
+    store.update_employee_fields(employee_id, **updates)
+    return get_employee_detail(store, employee_id, as_of, customer_id)

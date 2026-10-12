@@ -39,7 +39,7 @@ def create_app() -> Flask:
         response.headers["Access-Control-Allow-Headers"] = (
             "Content-Type, X-Customer-Id, X-Request-Id"
         )
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, PUT, OPTIONS"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, PUT, DELETE, OPTIONS"
         response.headers["Access-Control-Expose-Headers"] = "X-Request-Id"
         return response
 

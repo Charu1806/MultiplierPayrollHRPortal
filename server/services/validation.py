@@ -16,6 +16,62 @@ from server.services import findings as findings_svc  # noqa: E402
 from server.services import rules as rules_svc  # noqa: E402
 
 CURRENCY = {"India": "₹", "UK": "£", "Germany": "€", "Brazil": "R$"}
+_IDENTITY = {"India": "PAN", "UK": "NI number", "Germany": "Tax ID", "Brazil": "CPF"}
+_BANK = {"India": "Bank account", "UK": "Bank account", "Germany": "IBAN", "Brazil": "Bank account"}
+
+
+def _field_owner(country: str, field: str) -> str:
+    rows = (rules_svc.RULES.get("requiredFieldsByCountry") or {}).get(country) or []
+    for row in rows:
+        if row.get("field") == field:
+            return "employee" if row.get("owner") == "employee" else "hr"
+    if field in set(rules_svc.RULES.get("employeeOwnedFields") or []):
+        return "employee"
+    return "hr"
+
+
+def _hr_field(country: str, field: str, missing: List[str], values: Dict[str, str]) -> Dict[str, Any]:
+    if field in values and values[field]:
+        return {"field": field, "state": "value", "value": values[field], "owner": _field_owner(country, field)}
+    if field in missing:
+        return {"field": field, "state": "missing", "value": None, "owner": _field_owner(country, field)}
+    return {"field": field, "state": "on_file", "value": None, "owner": _field_owner(country, field)}
+
+
+def _hr_record(emp: Dict[str, Any], missing: List[str], values: Dict[str, str], salary: Dict[str, Any]) -> Dict[str, Any]:
+    """Offer and HR fields. Pay readiness stays on the payroll employee list."""
+    country = emp.get("country") or ""
+    identity_name = _IDENTITY.get(country, "Tax ID")
+    bank_name = _BANK.get(country, "Bank account")
+    insurance_raw = str(values.get("Insurance") or "").strip().lower()
+    insurance = "added" if insurance_raw in ("yes", "added", "true", "1") or (insurance_raw and insurance_raw not in ("no", "not added")) else "not_added"
+    if "Insurance" not in values:
+        insurance = "not_added"
+    employee_adds = [
+        {"field": field, "owner": "employee"}
+        for field in missing
+        if _field_owner(country, field) == "employee"
+    ]
+    if country == "India":
+        aadhaar = _hr_field(country, "Aadhaar", missing, values)
+        if aadhaar["state"] == "on_file" and "Aadhaar" not in values and "Aadhaar" not in missing:
+            aadhaar = {"field": "Aadhaar", "state": "not_recorded", "value": None, "owner": "employee"}
+    else:
+        aadhaar = {"field": "Aadhaar", "state": "not_used", "value": None, "owner": "employee"}
+    other_bits = []
+    if emp.get("manager_name"):
+        other_bits.append(f"Manager {emp['manager_name']}")
+    if emp.get("hire_date"):
+        other_bits.append(f"Start {emp['hire_date']}")
+    return {
+        "basePay": salary.get("base"),
+        "identity": _hr_field(country, identity_name, missing, values),
+        "aadhaar": aadhaar,
+        "bank": _hr_field(country, bank_name, missing, values),
+        "insurance": insurance,
+        "employeeAdds": employee_adds,
+        "other": " · ".join(other_bits),
+    }
 
 
 def findings_for_new_hire(**kwargs: Any) -> List[Dict[str, Any]]:
@@ -53,7 +109,7 @@ def enrich_employee(
     as_of: str,
     open_issues: Optional[List[Dict]] = None,
 ) -> Dict[str, Any]:
-    from server.services.pay_outlook import pay_outlook
+    from server.services.pay_outlook import pay_outlook, profile_pay_banner
 
     open_issues = open_issues or []
     missing = store.missing_fields(emp["id"], as_of)
@@ -64,7 +120,9 @@ def enrich_employee(
     status = rules_svc.employee_status(emp, exit_row, as_of)
     action = _action_needed(store, emp, open_issues)
     outlook = pay_outlook(store, emp, as_of)
+    outlook["banner"] = profile_pay_banner(store, emp, as_of, outlook)
     will = outlook["display"] + (f" · {outlook['note']}" if outlook.get("note") else "")
+    values = {k: v["value"] for k, v in store.field_values(emp["id"], as_of).items()}
     return {
         "id": emp["id"],
         "name": emp["name"],
@@ -83,7 +141,9 @@ def enrich_employee(
         "hireDate": emp.get("hire_date"),
         "managerName": emp.get("manager_name"),
         "missingFields": missing,
-        "fieldValues": {k: v["value"] for k, v in store.field_values(emp["id"], as_of).items()},
+        "paymentMissingFields": rules_svc.payment_missing_fields(store, emp, as_of),
+        "fieldValues": values,
+        "hrRecord": _hr_record(emp, missing, values, salary),
         "oneOffs": [
             {"label": p.label, "amount": p.amount, "cycleMonth": p.cycle, "type": p.type, "recordedOn": p.recorded_on}
             for p in otps
@@ -105,7 +165,7 @@ def enrich_employee(
         "exit": rules_svc.exit_dto(emp, exit_row),
         "notes": emp.get("notes"),
         "featured": _is_featured(emp),
-        "demoValues": rules_svc.demo_values(emp["id"]),
+        "demoValues": rules_svc.demo_values(emp["id"], missing),
     }
 
 
@@ -130,8 +190,12 @@ def list_employees(
     ]
     if action_needed is not None:
         out = [e for e in out if e["actionNeeded"] is action_needed]
+    removed = [e for e in out if e.get("status") == "Removed"]
     if status and status != "all":
         out = [e for e in out if (e.get("status") or "Active") == status]
+        removed = []
+    else:
+        out = [e for e in out if e.get("status") != "Removed"]
     if filter_key == "changed":
         out = [e for e in out if e.get("changedThisCycle")]
     elif filter_key == "reconciled":
@@ -142,13 +206,16 @@ def list_employees(
         out = [e for e in out if (e.get("payTiming") or {}).get("run") == "October"]
     if q:
         ql = q.strip().lower()
-        out = [
-            e
-            for e in out
-            if ql in (e.get("name") or "").lower()
-            or ql in (e.get("id") or "").lower()
-            or ql in (e.get("role") or "").lower()
-        ]
+
+        def matches(e: Dict[str, Any]) -> bool:
+            return (
+                ql in (e.get("name") or "").lower()
+                or ql in (e.get("id") or "").lower()
+                or ql in (e.get("role") or "").lower()
+            )
+
+        out = [e for e in out if matches(e)]
+        removed = [e for e in removed if matches(e)]
     # New joiners first, then name
     out.sort(key=lambda e: ((e.get("name") or "").lower()))
     out.sort(key=lambda e: 0 if e.get("isNew") else 1)
@@ -161,13 +228,14 @@ def list_employees(
         slice_ = out[start : start + page_size]
         return {
             "employees": slice_,
+            "removed": removed,
             "count": len(slice_),
             "total": total,
             "page": page,
             "pageSize": page_size,
             "asOf": as_of,
         }
-    return {"employees": out, "count": total, "total": total, "asOf": as_of}
+    return {"employees": out, "removed": removed, "count": total, "total": total, "asOf": as_of}
 
 
 def get_employee_detail(
@@ -179,6 +247,24 @@ def get_employee_detail(
     from server.services.inputs import reconcile_prorated_arrears
 
     reconcile_prorated_arrears(store, emp)
+    hr = store.get_hr_employee(employee_id)
+    latest = store.latest_successful_sync(customer_id, as_of)
+    payroll_snapshot = {
+        "baseSalary": emp["base_salary"],
+        "allowances": emp.get("allowances") or 0,
+        "unpaidLeaveDays": emp.get("unpaid_leave_days") or 0,
+        "lastSyncAt": latest.get("synced_at") if latest else None,
+        "readOnly": True,
+    }
+    if hr:
+        emp = {
+            **emp,
+            "base_salary": hr["base_salary"],
+            "allowances": hr.get("allowances") or 0,
+            "unpaid_leave_days": hr.get("unpaid_leave_days") or 0,
+            "role": hr.get("role") or emp.get("role"),
+            "manager_name": hr.get("manager_name") if hr.get("manager_name") is not None else emp.get("manager_name"),
+        }
     cycle = store.get_current_cycle(customer_id)
     open_rows = store.list_issues(cycle["id"], status="open", as_of=as_of) if cycle else []
     base = enrich_employee(store, emp, as_of, open_rows)
@@ -210,7 +296,74 @@ def get_employee_detail(
         else None
     )
     explanation = _hire_pay_explanation(emp, base)
-    return {**base, "journeySteps": journey, "mappings": mappings, "payExplanation": explanation}
+    adjustment = _pay_adjustment(store, emp, as_of, customer_id)
+    return {
+        **base,
+        "journeySteps": journey,
+        "mappings": mappings,
+        "letters": _letters(docs),
+        "payExplanation": explanation,
+        "payAdjustment": adjustment,
+        "payrollSnapshot": payroll_snapshot,
+    }
+
+
+def _letter_kind(doc: Dict[str, Any]) -> Optional[str]:
+    blob = f"{doc.get('doc_type') or ''} {doc.get('file_name') or ''}".lower().replace("_", " ")
+    if "salary revision" in blob or "hike" in blob:
+        return "hike"
+    if "bonus" in blob:
+        return "bonus"
+    if "offer" in blob:
+        return "offer"
+    return None
+
+
+def _letters(docs: List[Dict[str, Any]]) -> Dict[str, Optional[Dict[str, str]]]:
+    found: Dict[str, Dict[str, str]] = {}
+    for doc in docs:
+        kind = _letter_kind(doc)
+        if not kind:
+            continue
+        found[kind] = {
+            "id": doc["id"],
+            "fileName": doc.get("file_name") or "",
+            "kind": kind,
+        }
+    return {"offer": found.get("offer"), "bonus": found.get("bonus"), "hike": found.get("hike")}
+
+
+def _pay_adjustment(
+    store: Store, emp: Dict[str, Any], as_of: str, customer_id: str
+) -> Optional[Dict[str, Any]]:
+    """Review-matched pay cut (maternity, statutory pay, unpaid leave) for the profile."""
+    import re
+
+    cycle = store.get_current_cycle(customer_id)
+    if not cycle:
+        return None
+    row = store.current_review_line(cycle["id"], emp["id"])
+    if not row:
+        return None
+    from server.services.review import _line_dto, attach_llm_decisions
+
+    line = _line_dto(store, row, as_of)
+    why = line.get("whyFlagged") or ""
+    sept = float(emp.get("september_pay") or 0)
+    base_pay = float(emp.get("base_salary") or 0)
+    reduction = round(sept - base_pay, 2)
+    is_cut = reduction > 0.5 or bool(re.search(r"maternity|statutory|unpaid|leave|deduct", why, re.I))
+    if not is_cut or reduction <= 0.5:
+        return None
+    attach_llm_decisions([line])
+    return {
+        "label": why or "Pay reduction",
+        "amount": reduction,
+        "changeSummary": line.get("changeSummary"),
+        "whyFlagged": why,
+        "matchingSource": line.get("matchingSource"),
+        "llmDecision": line.get("llmDecision"),
+    }
 
 
 def _hire_pay_explanation(emp: Dict[str, Any], dto: Dict[str, Any]) -> Optional[str]:
@@ -319,19 +472,47 @@ def apply_missing_fields(
     return get_employee_detail(store, employee_id, as_of, emp["customer_id"])
 
 
+def _missing_title(fields: List[str]) -> str:
+    if len(fields) == 1:
+        return f"Missing {fields[0]}"
+    return "Missing " + ", ".join(fields[:-1]) + f" and {fields[-1]}"
+
+
 def _maybe_resolve_missing_issue(store: Store, employee_id: str, as_of: str, actor: str) -> None:
     still = store.missing_fields(employee_id, as_of)
+    returned = store.open_issue_for_employee(employee_id, "payment_returned")
+    if returned and "Bank account" not in still:
+        store.resolve_issue(
+            returned["id"],
+            resolved_by=actor,
+            resolved_at=as_of,
+            resolution_log=f"Bank details updated by {actor}, {as_of}",
+        )
     issue = store.open_issue_for_employee(employee_id, "missing_fields") or store.open_issue_for_employee(
         employee_id, "missing_data"
     )
-    if issue and not still:
-        store.resolve_issue(
-            issue["id"],
-            resolved_by=actor,
-            resolved_at=as_of,
-            resolution_log=f"Required fields added by {actor}, {as_of}",
-        )
-    # Also revalidate so findings stay in sync
+    if not issue:
+        return
+    if still:
+        # Keep the issue open for whatever is still empty. Only payment-required
+        # fields (model decides; owner does not) hold pay.
+        title = _missing_title(still)
+        emp = store.get_employee(employee_id) or {}
+        pay_missing = rules_svc.payment_missing_fields(store, emp, as_of) if emp else still
+        if pay_missing:
+            severity = "blocking"
+            impact = f"{emp.get('name') or 'Employee'} cannot be paid until {', '.join(pay_missing)} are added."
+        else:
+            severity = "needs_confirmation"
+            impact = f"{', '.join(still)} still needed. This does not hold {emp.get('name') or 'this employee'}'s pay."
+        store.update_issue(issue["id"], title=title, detail=title, severity=severity, impact=impact)
+        return
+    store.resolve_issue(
+        issue["id"],
+        resolved_by=actor,
+        resolved_at=as_of,
+        resolution_log=f"Required fields added by {actor}, {as_of}",
+    )
 
 def attach_document(
     store: Store,

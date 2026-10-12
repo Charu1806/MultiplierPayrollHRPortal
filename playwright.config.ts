@@ -24,7 +24,7 @@ export default defineConfig({
     viewport: { width: 1440, height: 900 },
     trace: 'retain-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], channel: 'chrome' } }],
   webServer: [
     {
       command: `python3 data/seed_db.py --db "${E2E_DB}" --seed 42 && python3 -m server.app`,

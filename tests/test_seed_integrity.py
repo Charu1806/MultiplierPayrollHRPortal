@@ -149,10 +149,11 @@ def test_james_bonus_resolves_issue_002(conn):
 
 def test_cycle_dates(conn):
     c = conn.execute("SELECT * FROM payroll_cycles WHERE id = 'cycle_2026_10'").fetchone()
-    assert c["input_finalisation"] == "2026-10-15"
+    assert c["input_finalisation"] == "2026-10-22"
     assert c["approval_date"] == "2026-10-22"
-    assert c["funding_due"] == "2026-10-23"
-    assert c["pay_date"] == "2026-10-28"
+    assert c["funding_due"] == "2026-10-26"
+    assert c["submitted_date"] == "2026-10-27"
+    assert c["pay_date"] == "2026-10-29"
     assert c["approved"] == 0
 
 

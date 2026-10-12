@@ -200,6 +200,28 @@ export const clarityApi = {
       body,
     }),
 
+  syncFromWorkday: (asOf: string, trigger: 'Manual' | 'Final' = 'Manual') =>
+    clarityFetch<{
+      status: string
+      trigger: string
+      syncedAt: string
+      actor: string
+      summary?: string | null
+      added: number
+      changed: number
+      exited: number
+      steps: string[]
+      idempotent?: boolean
+      activity?: {
+        previousCutoff?: string
+        deadline?: string
+        newEmployees?: { id: string; name: string; dateAdded: string }[]
+        bonuses?: { id: string; name: string; label: string }[]
+        hikes?: { id: string; name?: string | null; summary?: string | null }[]
+      }
+      classificationSource?: string
+    }>('/sync', { method: 'POST', body: { asOf, trigger }, asOf }),
+
   patchEmployee: (id: string, body: Record<string, unknown>, asOf: string) =>
     clarityFetch<EmployeeDto>(`/employees/${id}`, {
       method: 'PATCH',
@@ -239,6 +261,12 @@ export const clarityApi = {
     clarityFetch<EmployeeDto>(`/employees/${employeeId}/exit`, {
       method: 'POST',
       body: { ...body, asOf },
+      asOf,
+    }),
+
+  undoExit: (employeeId: string, asOf: string) =>
+    clarityFetch<EmployeeDto>(`/employees/${employeeId}/exit`, {
+      method: 'DELETE',
       asOf,
     }),
 
@@ -338,6 +366,9 @@ export const clarityApi = {
 
   getNotification: (id: string, asOf: string) =>
     clarityFetch<NotificationDetail>(`/notifications/${id}`, { asOf }),
+
+  sendHrQuery: (body: { asOf: string; recipient: string; subject: string; body: string; href?: string }) =>
+    clarityFetch<{ ok: boolean }>('/notifications/query', { method: 'POST', asOf: body.asOf, body }),
 
   getDocumentFixtures: () =>
     clarityFetch<DocumentFixturesResponse>('/documents/fixtures'),

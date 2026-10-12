@@ -15,13 +15,22 @@ export type CompanyConfig = {
   syncAgoMinutes: number
   payrollCaption: string
   multiplierBrandColor: string
-  admin: { name: string; role: string; initials: string }
+  admin: { name: string; role: string; initials: string; email?: string }
+  financeAdmin?: { name: string; role: string; initials: string; email?: string }
+  countryAdmins?: {
+    code: 'IN' | 'UK' | 'DE' | 'BR'
+    country: Country
+    name: string
+    role: string
+    initials: string
+    email: string
+  }[]
   prototypeBar: string
 }
 export type Severity = 'blocking' | 'deadline_risk' | 'needs_confirmation' | 'next_cycle'
 export type IssueStatus = 'open' | 'resolved'
 export type CountryStatus = 'On track' | 'Action needed' | 'Deadline risk'
-export type EmployeeStatus = 'Active' | 'Exiting' | 'Exited'
+export type EmployeeStatus = 'Active' | 'Exiting' | 'Exited' | 'Removed'
 
 export type PrototypeDatesResponse = {
   dates: string[]
@@ -78,6 +87,9 @@ export type CycleCurrentResponse = {
   inputsOpen?: boolean
   dates?: {
     cutoff?: string
+    inputDeadline?: string
+    finalSync?: string
+    fundingRequest?: string
     calculation?: string
     reviewOpen?: string
     reviewClose?: string
@@ -173,20 +185,115 @@ export type OverviewResponse = CycleCurrentResponse & {
   outcome?: OutcomeDto | null
   funding?: { receivedOn: string; countries: { country: string; received: boolean; label: string }[] } | null
   submitted?: { message: string } | null
-  notInRun?: { count: number; employees: { id: string; name: string }[]; message: string; href: string }
+  notInRun?: { count: number; employees: { id: string; name: string; country?: string }[]; message: string; href: string }
   carryOvers?: { id: string; name: string; reason?: string | null }[]
+  sync?: {
+    lastSync: {
+      syncedAt: string
+      trigger: string
+      actor: string
+      summary?: string | null
+      userInitiated?: boolean
+      added?: number
+      changed?: number
+      exited?: number
+    } | null
+    manualRemaining: number
+    maxPerDay: number
+  } | null
+  readiness?: {
+    changed: number
+    needAction: number
+    needApproval: number
+    matched: number
+    reconciles: boolean
+    openIssues: number
+  } | null
+  changeBreakdown?: {
+    added: number
+    exited: number
+    bonus: number
+    hike: number
+    leave: number
+    other: number
+  } | null
+  recentChanges?: { employeeId?: string | null; kind: string; summary: string; cycleAssignment: string; at: string }[]
+  fundingEstimate?: {
+    currency: string
+    required: number
+    available: number
+    toTransfer: number
+    illustrative: boolean
+    note?: string
+  } | null
+  fundingVariance?: {
+    forex: number
+    employerRates: number
+    other: number
+    total: number
+    reconciles: boolean
+    currency: string
+  } | null
+  payOutcomes?: {
+    simulated: boolean
+    paidSuccessfully: { count: number; of: number }
+    paidPreviousSalary: {
+      count: number
+      employees: { id?: string; name: string; reason: string }[]
+      href?: string | null
+    }
+    missingInputs: {
+      count: number
+      employees: { id?: string; name: string; field?: string; owner?: string; issueId?: string }[]
+      href?: string | null
+    }
+    addedAfterCutoff: { count: number; employees: { name: string; prorated: number }[] }
+    paymentReturned: { count: number }
+    byCountry?: Record<string, CountryPaySlice>
+  } | null
   octoberSummary?: {
     tone: string
     message: string
     href?: string
     linkLabel?: string
-    signedOff?: boolean
-    paidCount?: number
-    inRun?: number
-    arrears?: number
-    recoveries?: number
-    carriedOver?: number
+    month?: string
+    payDateLabel?: string
+    paid?: number
+    of?: number
+    paidPreviousSalary?: { count: number; href?: string | null }
+    missingInputs?: { count: number; href?: string | null }
+    addedAfterCutoff?: { count: number; href?: string | null }
+    paymentReturned?: { count: number; href?: string | null }
+    added?: { count: number; href?: string | null }
+    left?: { count: number; href?: string | null }
+    byCountry?: Record<string, CountryPaySlice>
   } | null
+  previousPayrolls?: {
+    tone: string
+    message: string
+    month?: string
+    payDateLabel?: string
+    paid?: number
+    of?: number
+    paidPreviousSalary?: { count: number; href?: string | null }
+    missingInputs?: { count: number; href?: string | null }
+    addedAfterCutoff?: { count: number; href?: string | null }
+    paymentReturned?: { count: number; href?: string | null }
+    added?: { count: number; href?: string | null }
+    left?: { count: number; href?: string | null }
+    byCountry?: Record<string, CountryPaySlice>
+  }[]
+}
+
+export type CountryPaySlice = {
+  paid: number
+  of: number
+  paidPreviousSalary: { count: number; href?: string | null }
+  missingInputs: { count: number; href?: string | null }
+  addedAfterCutoff: { count: number; href?: string | null }
+  paymentReturned: { count: number; href?: string | null }
+  added?: { count: number; href?: string | null }
+  left?: { count: number; href?: string | null }
 }
 
 export type IssueDto = {
@@ -301,10 +408,39 @@ export type EmployeeDto = {
   hireDate: string | null
   managerName: string | null
   missingFields: string[]
+  /** Missing fields the model says are required to pay. Manager is not included. */
+  paymentMissingFields?: string[]
   fieldValues?: Record<string, string>
+  hrRecord?: {
+    basePay?: number
+    identity: { field: string; state: 'value' | 'missing' | 'on_file'; value?: string | null; owner?: string }
+    aadhaar: { field: string; state: 'value' | 'missing' | 'on_file' | 'not_recorded' | 'not_used'; value?: string | null }
+    bank: { field: string; state: 'value' | 'missing' | 'on_file'; value?: string | null; owner?: string }
+    insurance: 'added' | 'not_added'
+    employeeAdds: { field: string; owner: string }[]
+    other: string
+  }
   oneOffs: OneOffDto[]
   /** LLM explanation when a first month is prorated. Amounts come from the pay engine. */
   payExplanation?: string | null
+  /** Pay cut explained by the same review line (why flagged, source, LLM warning). */
+  payAdjustment?: {
+    label: string
+    amount: number
+    changeSummary?: string
+    whyFlagged?: string
+    matchingSource?: string
+    llmDecision?: LlmDecisionDto | null
+  } | null
+  savedIn?: string
+  saveMessage?: string
+  payrollSnapshot?: {
+    baseSalary: number
+    allowances: number
+    unpaidLeaveDays: number
+    lastSyncAt?: string | null
+    readOnly: boolean
+  }
   changedThisCycle?: boolean
   matchedSource?: string | null
   editedByYou?: boolean
@@ -319,6 +455,7 @@ export type EmployeeDto = {
     note: string
     display: string
     tone: string
+    banner?: { text: string; tone: string }
   }
   exit?: Record<string, unknown> | null
   notes: string | null
@@ -326,6 +463,12 @@ export type EmployeeDto = {
   demoValues?: Record<string, string>
   journeySteps?: JourneyStepDto[] | null
   mappings?: MappingRowDto[]
+  /** Stored letters. A view link is shown only when that letter exists. */
+  letters?: {
+    offer?: { id: string; fileName: string; kind: string } | null
+    bonus?: { id: string; fileName: string; kind: string } | null
+    hike?: { id: string; fileName: string; kind: string } | null
+  } | null
 }
 
 export type EmployeesListResponse = {
@@ -333,6 +476,7 @@ export type EmployeesListResponse = {
   page?: number
   pageSize?: number
   employees: EmployeeDto[]
+  removed?: EmployeeDto[]
   count: number
   asOf: string
 }
@@ -393,6 +537,8 @@ export type ReviewLineDto = {
   openHref?: string
   requiresEmployeeNotified?: boolean
   llmDecision?: LlmDecisionDto | null
+  /** What happens to this line if it is still unapproved when the review closes. */
+  carryNote?: string | null
 }
 
 export type ReviewResponse = {
@@ -449,11 +595,26 @@ export type ReviewResponse = {
     reopened?: boolean
     reopenedNote?: string | null
   } | null
-  notInRun?: { count: number; employees: { id: string; name: string }[]; message: string; href: string } | null
+  notInRun?: { count: number; employees: { id: string; name: string; country?: string }[]; message: string; href: string } | null
   inputsOpen?: boolean
   canApprove?: boolean
   approved: boolean
   asOf?: string
+  ifUnapproved?: {
+    headline: string
+    nextCycle?: string
+    settled?: boolean
+    items: {
+      employeeId: string
+      name: string
+      kind: string
+      kindLabel: string
+      previousPay: string
+      difference: string
+      nextCycle?: string
+      note: string
+    }[]
+  } | null
 }
 
 export type ApproveResponse = {
@@ -467,6 +628,8 @@ export type ApproveResponse = {
 export type NotificationListItem = {
   id: string
   sendDate: string
+  createdAt?: string | null
+  unread?: boolean
   recipient: string
   channel: string
   subject: string
@@ -475,6 +638,9 @@ export type NotificationListItem = {
   kind?: string
   delivery?: 'sent' | 'not_sent_smtp_missing' | null
   ctaLabel?: string
+  audience?: 'global' | 'country' | 'employee' | null
+  country?: string | null
+  cc?: string | null
 }
 
 export type NotificationsListResponse = {
@@ -486,10 +652,18 @@ export type NotificationActionDto = {
   actionText: string
   deadline: string | null
   issueId: string | null
+  href?: string | null
+}
+
+export type NotificationPolicyLink = {
+  label: string
+  href: string
+  note?: string | null
 }
 
 export type NotificationDetail = NotificationListItem & {
   actions: NotificationActionDto[]
+  policy?: NotificationPolicyLink | null
   cta: {
     label: string
     href: string

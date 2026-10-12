@@ -13,6 +13,7 @@ from domain.calendar_rules import (  # noqa: E402
     CALCULATION,
     CUTOFF,
     NOV_CUTOFF,
+    PAYMENT_RETURNED,
     PAY_DATE,
     REVIEW_CLOSE,
     REVIEW_OPEN,
@@ -22,7 +23,7 @@ from domain.calendar_rules import (  # noqa: E402
     short_date,
 )
 
-DAVID_RETURN_DATE = parse_date("2026-10-29")
+DAVID_RETURN_DATE = PAYMENT_RETURNED
 from domain.country_status import country_statuses  # noqa: E402
 from domain.issues import can_approve, open_issues, sort_issues  # noqa: E402
 from domain.config import cycle_config  # noqa: E402
@@ -50,10 +51,14 @@ def _reminder_label(as_of: str, clock: str, first: str) -> str:
 def _issue_dto(store: Store, row: Dict[str, Any], as_of: Optional[str], include_ai: bool = False) -> Dict[str, Any]:
     emp = store.get_employee(row["employee_id"]) if row.get("employee_id") else None
     missing = store.missing_fields(row["employee_id"], as_of) if emp else []
+    pay_missing = rules_svc.payment_missing_fields(store, emp, as_of) if emp else []
     owned = rules_svc.split_owned(missing)
     deadline = row["deadline"]
     detail = row.get("detail")
-    if emp and missing and as_of and parse_date(as_of) > CUTOFF:
+    # A bank return starts on Oct 29, after October pay. It is not an input that
+    # was open when October inputs closed, so it must not inherit that copy.
+    bank_return = row.get("kind") == "payment_returned"
+    if emp and missing and as_of and parse_date(as_of) > CUTOFF and not bank_return:
         deadline = NOV_CUTOFF.isoformat()
         if parse_date(as_of) > PAY_DATE:
             detail = "Missed October pay. November pay at risk."
@@ -68,12 +73,20 @@ def _issue_dto(store: Store, row: Dict[str, Any], as_of: Optional[str], include_
     elif owned["hr"] or row.get("kind") == "pay_confirmation":
         owner_label = "HR admin"
 
-    carried = bool(as_of and parse_date(as_of) > CUTOFF and missing)
+    carried = bool(as_of and parse_date(as_of) > CUTOFF and missing and not bank_return)
+
+    severity = row["severity"]
+    impact = row["impact"]
+    if emp and row.get("kind") in ("missing_fields", "missing_data") and missing and not pay_missing:
+        # Still missing, but nothing left is required to pay. Do not hold the employee.
+        severity = "needs_confirmation"
+        names = ", ".join(missing)
+        impact = f"{names} still needed. This does not hold {emp['name']}'s pay."
 
     dto: Dict[str, Any] = {
         "id": row["id"],
         "title": row["title"],
-        "severity": row["severity"],
+        "severity": severity,
         "kind": row.get("kind") or "missing_fields",
         "employeeId": row.get("employee_id"),
         "employeeName": emp["name"] if emp else None,
@@ -82,7 +95,7 @@ def _issue_dto(store: Store, row: Dict[str, Any], as_of: Optional[str], include_
         "carriedOver": carried,
         "deadline": deadline,
         "source": row["source"],
-        "impact": row["impact"],
+        "impact": impact,
         "detail": detail,
         "status": row["status"],
         "resolvedAt": row.get("resolved_at"),
@@ -120,6 +133,31 @@ def _facts(store: Store, emp: Dict[str, Any], row: Dict[str, Any]) -> Dict[str, 
     }
 
 
+def _close_completed_payment_returns(
+    store: Store, rows: List[Dict[str, Any]], as_of: Optional[str]
+) -> List[Dict[str, Any]]:
+    """A bank-return action is done once the new account is saved."""
+    if not as_of:
+        return rows
+    kept: List[Dict[str, Any]] = []
+    for row in rows:
+        if (
+            row.get("kind") == "payment_returned"
+            and row.get("status") == "open"
+            and row.get("employee_id")
+            and "Bank account" not in store.missing_fields(row["employee_id"], as_of)
+        ):
+            store.resolve_issue(
+                row["id"],
+                resolved_by="HR admin",
+                resolved_at=as_of,
+                resolution_log=f"Bank details updated, {as_of}",
+            )
+            continue
+        kept.append(row)
+    return kept
+
+
 def list_issues(
     store: Store,
     customer_id: str,
@@ -132,18 +170,13 @@ def list_issues(
     if as_of:
         ensure_david_return_issue(store, as_of)
     rows = store.list_issues(cycle["id"], status=status, as_of=as_of)
-    # James "Salary up 3x" is October Action needed only (deadline Oct 15). After cutoff it
-    # belongs on Review (or November arrears if unsigned) — never November Action needed.
-    if as_of and parse_date(as_of) > CUTOFF:
-        rows = [
-            r
-            for r in rows
-            if not (
-                r.get("kind") == "pay_confirmation"
-                or r.get("id") == "issue_002"
-                or (r.get("title") or "").startswith("Salary up")
-            )
-        ]
+    rows = _close_completed_payment_returns(store, rows, as_of)
+    # Compensation changes belong on Review & approve. Action needed is missing or invalid data.
+    rows = [
+        r
+        for r in rows
+        if r.get("kind") not in ("pay_confirmation",) and not (r.get("title") or "").startswith("Salary up")
+    ]
     ordered = sort_issues(rows)
     return [_issue_dto(store, r, as_of, include_ai=False) for r in ordered]
 
@@ -172,8 +205,8 @@ def changes_reminder(as_of: str) -> Optional[Dict[str, Any]]:
         ),
         "actions": [
             {"label": "Add employee", "href": "/people/add"},
-            {"label": "Record exit", "href": "/people?hint=exit"},
-            {"label": "Add one-time payment", "href": "/people?hint=one-time"},
+            {"label": "Record exit", "href": "/payroll/employees?hint=exit"},
+            {"label": "Add one-time payment", "href": "/payroll/employees?hint=one-time"},
         ],
     }
 
@@ -209,11 +242,15 @@ def ensure_david_return_issue(store: Store, as_of: str) -> None:
             "country": "Germany",
             "owner": "HR admin",
             "deadline": NOV_CUTOFF.isoformat(),
-            "source": "Bank return Oct 29",
+            "source": f"Bank return {short_date(DAVID_RETURN_DATE)}",
             "impact": "Only David is held. The other employees were paid on time.",
-            "detail": "Bank returned David's October payment on Oct 29 (Account closed). Update bank details to re-send.",
+            "detail": (
+                f"Bank returned David's October payment on {DAVID_RETURN_DATE.day} {DAVID_RETURN_DATE.strftime('%b')} "
+                "(account closed). This started after October pay, so it was not on the list when inputs closed. "
+                "Update bank details to re-send."
+            ),
             "status": "open",
-            "created_on": "2026-10-29",
+            "created_on": DAVID_RETURN_DATE.isoformat(),
         }
     )
 
@@ -364,16 +401,11 @@ def overview(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
     cycle = store.get_current_cycle(customer_id)
     assert cycle
     issues = store.list_issues(cycle["id"], as_of=as_of)
-    if parse_date(as_of) > CUTOFF:
-        issues = [
-            r
-            for r in issues
-            if not (
-                r.get("kind") == "pay_confirmation"
-                or r.get("id") == "issue_002"
-                or (r.get("title") or "").startswith("Salary up")
-            )
-        ]
+    issues = [
+        r
+        for r in issues
+        if r.get("kind") not in ("pay_confirmation",) and not (r.get("title") or "").startswith("Salary up")
+    ]
     # Remap deadlines via DTO for post-cutoff November items
     open_raw = open_issues(issues)
     open_dtos = [_issue_dto(store, dict(r), as_of, include_ai=False) for r in open_raw]
@@ -484,6 +516,17 @@ def overview(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
                 "viewOnly": True,
             }
         )
+    if cd.get("submitted"):
+        up_next.append(
+            {
+                "kind": "milestone",
+                "title": "Payroll submitted",
+                "deadline": cd["submitted"],
+                "detail": "Submitted to payroll",
+                "href": None,
+                "viewOnly": True,
+            }
+        )
     up_next.append(
         {
             "kind": "milestone",
@@ -507,7 +550,7 @@ def overview(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
     if not in_november:
         if base["fundingVisible"]:
             funding = {
-                "receivedOn": CYCLE["cycles"]["october"]["fundingDue"],
+                "receivedOn": cd.get("fundingDue"),
                 "countries": [
                     {"country": c, "received": True, "label": "Funds received from finance ✓"}
                     for c in COUNTRY_ORDER
@@ -526,38 +569,10 @@ def overview(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
         unapplied_n=unapplied_n,
     )
 
-    # Compact October summary for November Overview
-    october_summary = None
-    if in_november:
-        outcome = rules_svc.outcome(store, customer_id, max(as_of, "2026-10-28"))
-        paid_n = (outcome or {}).get("paidOnTime", {}).get("count") or 0
-        total_n = (outcome or {}).get("inRun") or sum(counts.values())
-        arrears = sum(1 for r in unsigned_outcome_rows() if r["kind"] == "arrears") if not signed else 0
-        recoveries = sum(1 for r in unsigned_outcome_rows() if r["kind"] == "recovery") if not signed else 0
-        pay_lbl = short_date(CYCLE["cycles"]["october"]["payDate"])
-        parts = [f"**October payroll** · paid {pay_lbl} · {paid_n} of {total_n} received pay"]
-        if not signed and (arrears or recoveries):
-            parts.append(
-                f"review not signed off: {arrears} arrears, {recoveries} recoveries moved to November"
-            )
-        if carried_n:
-            parts.append(f"{carried_n} employees carried over")
-        # Green only when October closed cleanly (no unsigned review leftovers, no carry-overs)
-        oct_signed = bool(CYCLE["cycles"]["october"].get("approved")) or signed
-        # In this prototype October is never signed off when unsignedOutcomes apply
-        tone = "ok" if arrears == 0 and recoveries == 0 and carried_n == 0 else "warn"
-        october_summary = {
-            "tone": tone,
-            "message": " · ".join(parts),
-            "href": "/payroll/review?cycle=october",
-            "linkLabel": "View October summary",
-            "signedOff": oct_signed and arrears == 0 and recoveries == 0,
-            "paidCount": paid_n,
-            "inRun": total_n,
-            "arrears": arrears,
-            "recoveries": recoveries,
-            "carriedOver": carried_n,
-        }
+    from server.services.sync import payroll_close_highlight, previous_payrolls
+
+    october_summary = payroll_close_highlight(store, customer_id, as_of)
+    earlier_payrolls = previous_payrolls(store, customer_id, as_of)
 
     return {
         **base,
@@ -580,9 +595,47 @@ def overview(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
         "funding": funding,
         "submitted": submitted,
         "octoberSummary": october_summary,
+        "previousPayrolls": earlier_payrolls,
         "notInRun": rules_svc.not_in_run(store, customer_id, as_of),
         "carryOvers": rules_svc.carry_overs(store, customer_id, as_of) if in_november else [],
         "company": None,  # filled by route / state if needed
+        **_sync_overview(store, customer_id, as_of),
+    }
+
+
+def _sync_overview(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
+    from server.services import funding as funding_svc
+    from server.services import sync as sync_svc
+
+    sync_state = sync_svc.status(store, customer_id, as_of)
+    if not sync_state.get("lastSync"):
+        return {
+            "sync": sync_state,
+            "readiness": None,
+            "changeBreakdown": None,
+            "recentChanges": [],
+            "fundingEstimate": None,
+            "fundingVariance": None,
+            "payOutcomes": None,
+        }
+    recent = [
+        {
+            "employeeId": row.get("employee_id"),
+            "kind": row.get("kind"),
+            "summary": row.get("summary"),
+            "cycleAssignment": row.get("cycle_assignment"),
+            "at": row.get("created_at"),
+        }
+        for row in store.recent_sync_changes(customer_id, limit=5)
+    ]
+    return {
+        "sync": sync_state,
+        "readiness": sync_svc.readiness(store, customer_id, as_of),
+        "changeBreakdown": sync_svc.change_breakdown(store, customer_id, as_of),
+        "recentChanges": recent,
+        "fundingEstimate": funding_svc.estimate(store, customer_id, as_of),
+        "fundingVariance": funding_svc.variance(store, customer_id, as_of),
+        "payOutcomes": sync_svc.payday_outcomes(store, customer_id, as_of),
     }
 
 
@@ -673,9 +726,11 @@ def remind(
 
     cd = cycle_dates(as_of)
     cutoff_label = short_date(cd["inputFinalisation"] or NOV_CUTOFF)
-    carried = parse_date(as_of) > CUTOFF
+    carried = parse_date(as_of) > CUTOFF and row.get("kind") != "payment_returned"
     subject = f"Add your {label} for payroll"
-    if carried:
+    if row.get("kind") == "payment_returned":
+        subject = "Update your bank details – October payment was returned"
+    elif carried:
         subject = f"Add your {label} for payroll – missed October pay"
 
     field_reason = {
@@ -706,12 +761,13 @@ def remind(
         f"Your details go straight to payroll; you don't need to reply to this email."
     )
     ui_message = _reminder_label(as_of, clock, first)
-    if not smtp_result.get("sent"):
-        ui_message = f"{ui_message} · email not sent (SMTP not set up — see README)"
+    # Without SMTP, the reminder still goes out as the in-app email.
+    # A configured server that fails to send stays undelivered.
+    smtp_failed = email_smtp.smtp_configured() and not smtp_result.get("sent")
+    if smtp_failed:
+        ui_message = f"{ui_message} · email not sent ({smtp_result.get('error') or 'SMTP failed'})"
 
-    reminder_kind = (
-        "employee_reminder" if smtp_result.get("sent") else "employee_reminder_undelivered"
-    )
+    reminder_kind = "employee_reminder_undelivered" if smtp_failed else "employee_reminder"
 
     nid = store.add_notification(
         store.get_current_cycle(customer_id)["id"],
@@ -721,10 +777,10 @@ def remind(
         subject=subject,
         body_summary=body,
         actions=[{"action_text": f"Add {label}", "deadline": cd["inputFinalisation"], "issue_id": issue_id}],
-        cta_label="Add my details →",
+        cta_label="Add my details",
         # HR Notifications CTA opens employee profile with Missing details expanded.
         # The SMTP email still uses form_url so the employee can fill the form.
-        cta_href=f"/people/{emp['id']}?panel=missing",
+        cta_href=f"/people/{emp['id']}?panel=missing#missing-details",
         kind=reminder_kind,
     )
     return {
@@ -742,7 +798,18 @@ def approve_allowed(store: Store, customer_id: str, as_of: Optional[str] = None)
     cycle = store.get_current_cycle(customer_id)
     if not cycle:
         return False
-    return can_approve(store.list_issues(cycle["id"], as_of=as_of))
+    rows = []
+    for row in store.list_issues(cycle["id"], as_of=as_of):
+        if (
+            row.get("status") == "open"
+            and row.get("kind") in ("missing_fields", "missing_data")
+            and row.get("employee_id")
+        ):
+            emp = store.get_employee(row["employee_id"])
+            if emp and not rules_svc.payment_missing_fields(store, emp, as_of or ""):
+                row = {**row, "severity": "needs_confirmation"}
+        rows.append(row)
+    return can_approve(rows)
 
 
 def ensure_missing_fields_issue(store: Store, employee_id: str, as_of: str) -> None:

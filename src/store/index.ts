@@ -19,9 +19,11 @@ import type {
   PrototypeDate,
   PrototypeDatesResponse,
   ResolveIssueBody,
+  ResolveIssueResponse,
   ReviewResponse,
 } from '@/api/types'
 import type { FieldFormatSpec } from '@/lib/fieldValidation'
+import { readStoredPersona, writeStoredPersona, type PersonaId } from '@/features/persona'
 
 export type { PrototypeDate }
 
@@ -38,6 +40,7 @@ function inDateRange(value: string, min = '2026-10-01', max = '2027-01-31'): boo
 
 type AppStore = {
   asOf: PrototypeDate
+  persona: PersonaId
   prototypeDates: PrototypeDatesResponse | null
   overview: OverviewResponse | null
   company: CompanyConfig | null
@@ -71,11 +74,12 @@ type AppStore = {
 
   boot: () => Promise<void>
   setAsOf: (date: PrototypeDate) => Promise<void>
+  setPersona: (persona: PersonaId) => void
   refreshAll: () => Promise<void>
   refreshOverview: () => Promise<void>
   refreshIssues: () => Promise<void>
   loadIssue: (id: string) => Promise<void>
-  resolveIssue: (id: string, body: ResolveIssueBody) => Promise<void>
+  resolveIssue: (id: string, body: ResolveIssueBody) => Promise<ResolveIssueResponse>
   remindIssue: (id: string) => Promise<string | undefined>
   refreshEmployees: () => Promise<void>
   loadEmployee: (id: string) => Promise<void>
@@ -83,8 +87,22 @@ type AppStore = {
   attachDocument: (employeeId: string, body: AttachDocumentBody) => Promise<EmployeeDto>
   fillMissingFields: (employeeId: string, body?: MissingFieldsBody) => Promise<EmployeeDto>
   patchEmployee: (id: string, body: Record<string, unknown>, confirmAi?: boolean) => Promise<EmployeeDto>
+  syncFromWorkday: (trigger?: 'Manual' | 'Final') => Promise<{
+    summary?: string | null
+    actor: string
+    trigger: string
+    syncedAt: string
+    steps: string[]
+    activity?: {
+      previousCutoff?: string
+      newEmployees?: { name: string; dateAdded: string }[]
+      bonuses?: { name: string; label: string }[]
+      hikes?: { name?: string | null; summary?: string | null }[]
+    }
+  }>
   addOneTimePayment: (id: string, body: Record<string, unknown>) => Promise<EmployeeDto>
   recordExit: (id: string, body: Record<string, unknown>) => Promise<EmployeeDto>
+  undoExit: (id: string) => Promise<EmployeeDto>
   reopenReview: (employeeId: string) => Promise<void>
   refreshReview: () => Promise<void>
   approveLine: (lineId: string) => Promise<void>
@@ -131,6 +149,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   prototypeDates: null,
   overview: null,
   company: null,
+  persona: readStoredPersona(),
   rules: null,
   issues: [],
   selectedIssue: null,
@@ -228,6 +247,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
   },
 
+  setPersona: (persona) => {
+    writeStoredPersona(persona)
+    set({ persona })
+  },
+
   setAsOf: async (date) => {
     if (!inDateRange(date)) return
     writeStoredAsOf(date)
@@ -269,6 +293,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       })
       set({ selectedIssue: result.issue, overview: result.overview, confirm: null })
       await Promise.all([get().refreshIssues(), get().refreshEmployees(), get().refreshReview()])
+      return result
     } catch (err) {
       if (!get().confirm) {
         get().pushToast(errorMessage(err))
@@ -355,12 +380,25 @@ export const useAppStore = create<AppStore>((set, get) => ({
         get().refreshEmployees(),
         get().refreshOverview(),
         get().refreshIssues(),
+        get().refreshNotifications(),
       ])
       return employee
     } catch (err) {
       get().pushToast(errorMessage(err))
       throw err
     }
+  },
+
+  syncFromWorkday: async (trigger = 'Manual') => {
+    const result = await clarityApi.syncFromWorkday(get().asOf, trigger)
+    await Promise.all([
+      get().refreshOverview(),
+      get().refreshIssues(),
+      get().refreshEmployees(),
+      get().refreshReview(),
+      get().refreshNotifications(),
+    ])
+    return result
   },
 
   patchEmployee: async (id, body, confirmAi = false) => {
@@ -410,6 +448,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const employee = await clarityApi.recordExit(id, body, get().asOf)
     set({ employeeDetail: employee, confirm: null })
     await Promise.all([get().refreshEmployees(), get().refreshReview()])
+    get().pushToast(`${employee.name} removed · full and final is on Review & approve`)
+    return employee
+  },
+
+  undoExit: async (id) => {
+    const employee = await clarityApi.undoExit(id, get().asOf)
+    set({ employeeDetail: employee, confirm: null })
+    await Promise.all([get().refreshEmployees(), get().refreshReview()])
+    get().pushToast(`${employee.name} is back on payroll`)
     return employee
   },
 
@@ -459,6 +506,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
   loadNotification: async (id) => {
     try {
       set({ selectedNotification: await clarityApi.getNotification(id, get().asOf) })
+      const res = await clarityApi.getNotifications(get().asOf)
+      set({ notifications: res.notifications })
     } catch (err) {
       get().pushToast(errorMessage(err))
     }

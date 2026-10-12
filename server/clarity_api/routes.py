@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import sys
 from pathlib import Path
 from typing import Optional
@@ -10,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT / "data") not in sys.path:
     sys.path.insert(0, str(ROOT / "data"))
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_file
 
 from server.db.connection import connect, get_db_path
 from server.db.repositories import Store
@@ -172,6 +173,42 @@ def inputs_preview():
         return _problem(404, "Not Found", str(e))
 
 
+@bp.get("/documents/<doc_id>/file")
+def document_file(doc_id: str):
+    """Open a stored offer, bonus, or hike letter. Demo PDFs are served from disk."""
+    store = _store()
+    doc = store.get_document(doc_id)
+    if not doc:
+        return _problem(404, "Not Found", "Document not found")
+    emp = store.get_employee(doc["employee_id"])
+    if not emp or emp["customer_id"] != customer_id():
+        return _problem(404, "Not Found", "Document not found")
+    name = Path(doc.get("file_name") or "").name
+    demo = ROOT / "demo_documents" / name
+    if not demo.is_file():
+        for alias, fixture in extraction_svc.DEMO_FILENAME_ALIASES.items():
+            if name in (alias, fixture):
+                candidate = ROOT / "demo_documents" / alias
+                if candidate.is_file():
+                    demo = candidate
+                    break
+    if demo.is_file():
+        return send_file(demo, mimetype="application/pdf", as_attachment=False, download_name=name or demo.name)
+    title = html.escape(name or "Letter")
+    lines = "".join(
+        f"<li>{html.escape(str(m.get('multiplierField') or ''))}: {html.escape(str(m.get('value') or ''))}</li>"
+        for m in (doc.get("mappings") or [])
+        if m.get("value")
+    )
+    page = (
+        "<!doctype html><meta charset='utf-8'><title>"
+        + title
+        + "</title><body style='font-family:sans-serif;padding:24px'>"
+        + f"<h1>{title}</h1><ul>{lines or '<li>No extracted fields</li>'}</ul></body>"
+    )
+    return page, 200, {"Content-Type": "text/html; charset=utf-8"}
+
+
 @bp.post("/documents/generate")
 def documents_generate():
     from server.services.documents_generate import generate_sample_pdf
@@ -238,7 +275,8 @@ def employees_missing_fields(employee_id: str):
     if body.get("fillSample"):
         from server.services import rules as rules_svc
 
-        fields = rules_svc.demo_values(employee_id)
+        missing = _store().missing_fields(employee_id, as_of)
+        fields = rules_svc.demo_values(employee_id, missing)
     try:
         return jsonify(
             validation_svc.apply_missing_fields(
@@ -275,6 +313,17 @@ def employees_exit(employee_id: str):
     as_of = _as_of()
     try:
         return jsonify(connector_svc.record_exit(_store(), employee_id, body, as_of=as_of, customer_id=customer_id()))
+    except LookupError:
+        return _problem(404, "Not Found", "Employee not found")
+    except ValueError as e:
+        return _problem(400, "Bad Request", str(e))
+
+
+@bp.delete("/employees/<employee_id>/exit")
+def employees_exit_undo(employee_id: str):
+    as_of = _as_of()
+    try:
+        return jsonify(connector_svc.undo_exit(_store(), employee_id, as_of=as_of, customer_id=customer_id()))
     except LookupError:
         return _problem(404, "Not Found", "Employee not found")
     except ValueError as e:
@@ -490,6 +539,32 @@ def notifications_list():
         return _problem(404, "Not Found", "Cycle not found")
 
 
+@bp.post("/notifications/query")
+def notifications_query():
+    body = request.get_json(silent=True) or {}
+    as_of = _as_of()
+    store = _store()
+    cycle = store.get_current_cycle(customer_id())
+    if not cycle:
+        return _problem(404, "Not Found", "Cycle not found")
+    recipient = str(body.get("recipient") or "").strip()
+    message = str(body.get("body") or "").strip()
+    if not recipient or not message:
+        return _problem(400, "Bad Request", "Recipient and message are required")
+    store.add_notification(
+        cycle["id"],
+        send_date=as_of[:10],
+        recipient=recipient,
+        subject=str(body.get("subject") or "Payroll query"),
+        body_summary=message,
+        actions=[],
+        cta_label="Open Action needed",
+        cta_href=str(body.get("href") or "/payroll/actions"),
+        kind="hr_query",
+    )
+    return jsonify({"ok": True})
+
+
 @bp.get("/notifications/<notification_id>")
 def notifications_get(notification_id: str):
     try:
@@ -547,6 +622,41 @@ def drive_extract():
         return _problem(400, "Bad Request", str(e), code="drive_access")
     except ValueError as e:
         return _problem(400, "Bad Request", str(e))
+
+
+@bp.get("/sync")
+def sync_status():
+    from server.services import sync as sync_svc
+
+    as_of = _as_of()
+    return jsonify(sync_svc.status(_store(), customer_id(), as_of))
+
+
+@bp.post("/sync")
+def sync_run():
+    from server.services.sync import SyncFailed, SyncLimitError, run_sync
+
+    body = request.get_json(silent=True) or {}
+    as_of = _as_of()
+    trigger = body.get("trigger") or "Manual"
+    try:
+        result = run_sync(_store(), customer_id(), as_of, trigger=trigger)
+        return jsonify(result)
+    except SyncLimitError as e:
+        return _problem(429, "Sync limit", str(e))
+    except SyncFailed as e:
+        return _problem(409, "Sync failed", str(e))
+
+
+@bp.post("/sync/refresh/<employee_id>")
+def sync_refresh(employee_id: str):
+    from server.services.sync import refresh_employee
+
+    as_of = _as_of()
+    try:
+        return jsonify(refresh_employee(_store(), customer_id(), employee_id, as_of))
+    except LookupError:
+        return _problem(404, "Not Found", "Employee not found")
 
 
 @bp.post("/demo/reset")

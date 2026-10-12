@@ -6,7 +6,7 @@
   "logoFg": "#ffffff",
   "workspaceSubtitle": "Northwind Labs workspace",
   "hrTool": "BambooHR",
-  "syncCaption": "Synced from BambooHR",
+  "syncCaption": "Sync from HRIS tools and third party channels",
   "syncAgoMinutes": 12,
   "payrollCaption": "Powered by Multiplier",
   "multiplierBrandColor": "#863bff",

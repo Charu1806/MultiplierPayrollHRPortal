@@ -24,7 +24,7 @@ const ROUTES = [
   '/payroll/overview',
   '/payroll/actions',
   '/payroll/review',
-  '/payroll/notifications',
+  '/people/notifications',
   '/people',
   '/people/add',
 ]

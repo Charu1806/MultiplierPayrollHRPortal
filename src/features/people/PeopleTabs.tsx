@@ -1,7 +1,8 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useMatch } from 'react-router-dom'
 import { Button } from '@/components'
 
 export function PeopleTabs() {
+  const adding = useMatch('/people/add')
   const tab =
     ({ isActive }: { isActive: boolean }) =>
       [
@@ -18,9 +19,13 @@ export function PeopleTabs() {
           All employees
         </NavLink>
       </div>
-      <NavLink to="/people/add">
-        <Button variant="primary">Add employee</Button>
-      </NavLink>
+      {adding ? null : (
+        <NavLink to="/people/add">
+          <Button variant="primary" data-testid="add-employee">
+            Add employee
+          </Button>
+        </NavLink>
+      )}
     </div>
   )
 }

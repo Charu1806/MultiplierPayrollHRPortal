@@ -18,7 +18,11 @@ def emails_visible_on(
     ]
     return sorted(
         visible,
-        key=lambda e: parse_date(str(e["send_date"])),
+        key=lambda e: (
+            parse_date(str(e["send_date"])).toordinal(),
+            1 if e.get("created_at") else 0,
+            str(e.get("created_at") or ""),
+        ),
         reverse=True,
     )
 

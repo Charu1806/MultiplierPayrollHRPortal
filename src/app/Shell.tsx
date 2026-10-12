@@ -1,18 +1,23 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { RefreshCw } from 'lucide-react'
 import { BreadcrumbBar } from '@/components/Breadcrumb'
 import { ConfirmModal, NoticeModal, ToastStack } from '@/components'
 import { DatePicker } from '@/components/DatePicker'
 import { MultiplierLogo } from '@/components/MultiplierLogo'
-import { getClarityApiBase } from '@/api/clarityClient'
+import { formatIsoDate, formatJourneyAt } from '@/features/payroll/lib/labels'
+import { countryAdmins, notificationVisible, personaCountry } from '@/features/persona'
 import { useAppStore, type PrototypeDate } from '@/store'
+
+const peopleNav = [{ to: '/people', label: 'Employees', badgeKey: null }] as const
+
+const peopleSoon = ['Time off', 'Insurance', 'Expenses'] as const
 
 const payrollNav = [
   { to: '/payroll/overview', label: 'Overview', badgeKey: null },
   { to: '/payroll/actions', label: 'Action needed', badgeKey: 'actions' as const },
   { to: '/payroll/review', label: 'Review & approve', badgeKey: 'review' as const },
-  { to: '/payroll/notifications', label: 'Notifications', badgeKey: null },
+  { to: '/payroll/employees', label: 'Employees', badgeKey: null },
 ] as const
 
 const stubNav = [
@@ -42,25 +47,27 @@ function GroupLabel({
   captionColor,
   icon,
   captionOnly,
+  wrapCaption,
 }: {
   title: string
   caption?: string
   captionColor?: string
   icon?: ReactNode
   captionOnly?: ReactNode
+  wrapCaption?: boolean
 }) {
   return (
-    <div className="mb-1 mt-6 flex items-center justify-between gap-2 px-2 first:mt-2">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{title}</p>
+    <div className="mb-1 mt-6 flex items-start justify-between gap-2 px-2 first:mt-2">
+      <p className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-slate-500">{title}</p>
       {captionOnly ? (
         <div className="flex items-center">{captionOnly}</div>
       ) : caption ? (
         <p
-          className="flex items-center gap-1 text-[10px] leading-tight"
+          className={`flex gap-1 text-[10px] leading-tight ${wrapCaption ? 'max-w-[11.5rem] items-start text-right' : 'items-center'}`}
           style={{ color: captionColor || '#94a3b8' }}
         >
           {icon}
-          <span className="truncate">{caption}</span>
+          <span className={wrapCaption ? '' : 'truncate'}>{caption}</span>
         </p>
       ) : null}
     </div>
@@ -70,8 +77,10 @@ function GroupLabel({
 export function Shell() {
   const location = useLocation()
   const navigate = useNavigate()
+  const isNotifications = location.pathname.startsWith('/people/notifications')
   const isPayroll = location.pathname.startsWith('/payroll')
-  const isPeople = location.pathname.startsWith('/people')
+  const isPeopleList = location.pathname.startsWith('/people') && !isNotifications
+  const isHr = isPeopleList || isNotifications
 
   const asOf = useAppStore((s) => s.asOf)
   const setAsOf = useAppStore((s) => s.setAsOf)
@@ -83,17 +92,31 @@ export function Shell() {
   const resetDemo = useAppStore((s) => s.resetDemo)
   const askConfirm = useAppStore((s) => s.askConfirm)
   const confirm = useAppStore((s) => s.confirm)
+  const syncFromWorkday = useAppStore((s) => s.syncFromWorkday)
+  const [syncing, setSyncing] = useState(false)
+  const [syncLabel, setSyncLabel] = useState('')
   const confirmBusy = useAppStore((s) => s.confirmBusy)
   const confirmError = useAppStore((s) => s.confirmError)
   const cancelConfirm = useAppStore((s) => s.cancelConfirm)
   const notice = useAppStore((s) => s.notice)
   const dismissNotice = useAppStore((s) => s.dismissNotice)
 
-  const openActions = overview?.statusLine.openActions ?? 0
+  const notifications = useAppStore((s) => s.notifications)
+  const issues = useAppStore((s) => s.issues)
   const review = useAppStore((s) => s.review)
+  const persona = useAppStore((s) => s.persona)
+  const scopedCountry = personaCountry(persona, company)
+  const openActions = scopedCountry
+    ? issues.filter((issue) => issue.status === 'open' && issue.country === scopedCountry).length
+    : (overview?.statusLine.openActions ?? 0)
+  const unreadNotifications = notifications.filter(
+    (item) => item.unread !== false && notificationVisible(item, persona, company),
+  ).length
   const reviewBadge =
     review?.windowState === 'open' && !review.signedOff
-      ? (review.badgeCount ?? review.remaining ?? 0)
+      ? scopedCountry
+        ? review.lines.filter((line) => !line.approved && line.country === scopedCountry).length
+        : (review.badgeCount ?? review.remaining ?? 0)
       : 0
   const cycleLabel = overview?.cycle.label ?? 'Payroll'
 
@@ -104,7 +127,7 @@ export function Shell() {
     logoFg: '#ffffff',
     workspaceSubtitle: 'HR workspace',
     hrTool: 'Workday',
-    syncCaption: 'Synced from Workday',
+    syncCaption: 'Sync from HRIS tools and third party channels',
     syncAgoMinutes: 12,
     payrollCaption: 'Powered by Multiplier',
     multiplierBrandColor: '#863bff',
@@ -113,12 +136,19 @@ export function Shell() {
       "Prototype · Acme Tech's HR workspace (employee data synced from Workday) with Multiplier Payroll embedded",
   }
 
-  function badgeFor(key: 'actions' | 'review' | null): number {
+  function badgeFor(key: 'actions' | 'review' | 'notifications' | null): number {
     if (key === 'actions') return openActions
     if (key === 'review') return reviewBadge
+    if (key === 'notifications') return unreadNotifications
     return 0
   }
 
+  const setPersona = useAppStore((s) => s.setPersona)
+  const admins = countryAdmins(company)
+  const selectedAdmin =
+    persona === 'global'
+      ? co.admin
+      : admins.find((row) => row.code === persona) || co.admin
   const syncCaption = `${co.syncCaption} · ${co.syncAgoMinutes} min ago`
 
   return (
@@ -139,7 +169,46 @@ export function Shell() {
             {isRefreshing ? <span className="text-text-muted">Refreshing…</span> : null}
           </label>
         </div>
-        <span className="tabular shrink-0 text-text-muted">API: {getClarityApiBase()}</span>
+        <div className="flex shrink-0 items-center gap-3">
+          <label className="flex items-center gap-2">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold text-slate-700">
+              {selectedAdmin.initials}
+            </span>
+            <select
+              aria-label="Signed-in HR admin"
+              className="h-7 max-w-[240px] rounded border border-border bg-surface px-2 text-xs text-text-primary"
+              value={persona}
+              onChange={(event) => setPersona(event.target.value as typeof persona)}
+            >
+              <option value="global">
+                {co.admin.name} · Global HR admin
+              </option>
+              {admins.map((row) => (
+                <option key={row.code} value={row.code}>
+                  {row.name} · {row.country} HR admin
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className="h-4 w-px bg-border" aria-hidden />
+          <button
+            type="button"
+            className="text-text-secondary hover:text-text-primary"
+            onClick={() =>
+              askConfirm({
+                title: 'Reset demo',
+                body: 'Reset all demo data to the default prototype date?',
+                confirmLabel: 'Reset',
+                onConfirm: async () => {
+                  await resetDemo()
+                  navigate('/payroll/overview')
+                },
+              })
+            }
+          >
+            Reset demo
+          </button>
+        </div>
       </div>
 
       <div className="flex min-h-0 flex-1">
@@ -159,24 +228,49 @@ export function Shell() {
           </div>
 
           <nav className="flex flex-1 flex-col overflow-y-auto px-2 pb-2">
+            <div data-testid="nav-people">
             <GroupLabel
               title="People"
               caption={syncCaption}
-              icon={<RefreshCw size={10} className="shrink-0 opacity-70" />}
+              wrapCaption
+              icon={<RefreshCw size={10} className="mt-0.5 shrink-0 opacity-70" />}
             />
-            <NavLink to="/people" className={() => itemClass(isPeople)} end={false}>
-              <span>Employees</span>
+            {peopleNav.map((item) => {
+              const count = badgeFor(item.badgeKey)
+              return (
+                <NavLink key={item.to} to={item.to} className={() => itemClass(isPeopleList)} end>
+                  <span>{item.label}</span>
+                  {count > 0 ? (
+                    <span className="rounded border border-status-danger-border bg-status-danger-bg px-1 text-[10px] font-medium tabular text-status-danger-text">
+                      {count}
+                    </span>
+                  ) : null}
+                </NavLink>
+              )
+            })}
+            {peopleSoon.map((label) => (
+              <button
+                key={label}
+                type="button"
+                className={`${itemClass(false)} cursor-default opacity-50`}
+                disabled
+                title="Planned for V2"
+              >
+                <span>{label}</span>
+              </button>
+            ))}
+            <NavLink to="/people/notifications" className={() => itemClass(isNotifications)}>
+              <span>Notifications</span>
+              {unreadNotifications > 0 ? (
+                <span className="rounded border border-status-danger-border bg-status-danger-bg px-1 text-[10px] font-medium tabular text-status-danger-text">
+                  {unreadNotifications}
+                </span>
+              ) : null}
             </NavLink>
-            <button
-              type="button"
-              className={`${itemClass(false)} cursor-default opacity-50`}
-              disabled
-              title="Planned for V2"
-            >
-              <span>Time off</span>
-            </button>
+            </div>
 
             <div className="mx-2 mt-6 border-t border-border" />
+            <div data-testid="nav-payroll">
             <GroupLabel
               title="Payroll"
               captionOnly={
@@ -208,6 +302,7 @@ export function Shell() {
                 </NavLink>
               )
             })}
+            </div>
 
             <div className="mx-2 mt-6 border-t border-border" />
             <GroupLabel title="Coming next" />
@@ -225,52 +320,113 @@ export function Shell() {
                 </span>
               </button>
             ))}
-
-            <div className="mt-auto border-t border-border pt-3">
-              <div className="mb-2 flex items-center gap-2 px-2">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold text-slate-700">
-                  {co.admin.initials}
-                </div>
-                <p className="min-w-0 truncate text-[12px] text-text-primary">
-                  <span className="font-medium">{co.admin.name}</span>
-                  <span className="text-text-muted"> · {co.admin.role}</span>
-                </p>
-              </div>
-              <button
-                type="button"
-                className="w-full rounded border border-border bg-surface px-2 py-1.5 text-left text-[12px] text-text-secondary hover:bg-surface-recessed hover:text-text-primary"
-                onClick={() =>
-                  askConfirm({
-                    title: 'Reset demo',
-                    body: `Reset all demo data to the default prototype date?`,
-                    confirmLabel: 'Reset',
-                    onConfirm: async () => {
-                      await resetDemo()
-                      navigate('/payroll/overview')
-                    },
-                  })
-                }
-              >
-                Reset demo
-              </button>
-            </div>
           </nav>
         </aside>
 
         <main className="flex min-w-0 flex-1 flex-col">
-          {isPayroll || isPeople ? (
+          {isPayroll || isHr ? (
             <header className="flex h-11 items-center justify-between border-b border-border bg-surface px-6 text-[13px]">
               <div className="flex items-center">
                 <p className="font-medium text-text-primary">
                   {isPayroll ? `Payroll · ${cycleLabel}` : 'People'}
                 </p>
-                <MultiplierLogo size={18} className="ml-3" />
-                <span
-                  className="ml-1.5 font-medium"
-                  style={{ color: co.multiplierBrandColor || 'var(--multiplier-brand)' }}
-                >
-                  {co.payrollCaption}
-                </span>
+                {isPayroll ? (
+                  <button
+                    type="button"
+                    className="ml-4 h-7 rounded bg-text-primary px-3 text-[12px] font-medium text-white hover:bg-slate-800 disabled:opacity-60"
+                    disabled={syncing}
+                    onClick={() => {
+                      const viewOverview = async () => {
+                        cancelConfirm()
+                        navigate('/payroll/overview')
+                      }
+                      if ((overview?.sync?.manualRemaining ?? 1) === 0) {
+                        const last = overview?.sync?.lastSync
+                        const when = last?.syncedAt
+                          ? last.userInitiated
+                            ? formatJourneyAt(last.syncedAt)
+                            : formatIsoDate(last.syncedAt.slice(0, 10))
+                          : 'today'
+                        askConfirm({
+                          title: 'Already synced today',
+                          body: [
+                            `Last sync · ${when}${last?.summary ? ` · ${last.summary}` : ''}`,
+                            'This prototype day already has its sync. Move the prototype date forward to run another one.',
+                          ].join('\n'),
+                          confirmLabel: 'View in Overview',
+                          onConfirm: viewOverview,
+                        })
+                        return
+                      }
+                      const steps = [
+                        'Fetching changes from the connector',
+                        'Updating the payroll snapshot',
+                        'Calculating new employees, bonuses, and hikes',
+                        'Validating inputs',
+                        'Updating Action needed and Review',
+                      ]
+                      setSyncing(true)
+                      setSyncLabel(steps[0])
+                      let i = 0
+                      const timer = window.setInterval(() => {
+                        i = Math.min(i + 1, steps.length - 1)
+                        setSyncLabel(steps[i])
+                      }, 350)
+                      void syncFromWorkday('Manual')
+                        .then((result) => {
+                          const activity = result.activity
+                          const newcomers = activity?.newEmployees?.length
+                            ? activity.newEmployees.map((row) => `${row.name} (added ${row.dateAdded})`).join(', ')
+                            : 'none'
+                          const bonuses = activity?.bonuses?.length
+                            ? activity.bonuses.map((row) => `${row.name}: ${row.label}`).join(', ')
+                            : 'none'
+                          const hikes = activity?.hikes?.length
+                            ? activity.hikes.map((row) => row.name || row.summary).join(', ')
+                            : 'none'
+                          const since = activity?.previousCutoff || 'the previous cutoff'
+                          askConfirm({
+                            title: 'Sync complete',
+                            body: [
+                              result.summary || 'No changes detected',
+                              `Last sync · ${formatJourneyAt(result.syncedAt)}`,
+                              `New employees to pay this month, added after ${since}: ${newcomers}`,
+                              `Bonuses: ${bonuses}`,
+                              `Hikes: ${hikes}`,
+                              'Action needed and Review were recalculated from this sync.',
+                            ].join('\n'),
+                            confirmLabel: 'View in Overview',
+                            onConfirm: viewOverview,
+                          })
+                        })
+                        .catch((err: unknown) => {
+                          pushToast(err instanceof Error ? err.message : 'Sync failed')
+                        })
+                        .finally(() => {
+                          window.clearInterval(timer)
+                          setSyncing(false)
+                          setSyncLabel('')
+                        })
+                    }}
+                  >
+                    {syncing
+                      ? syncLabel || 'Syncing…'
+                      : (overview?.sync?.manualRemaining ?? 1) === 0
+                        ? 'Synced today'
+                        : `Sync from connector (example ${co.hrTool || 'Workday'})`}
+                  </button>
+                ) : null}
+                {isPayroll ? (
+                  <>
+                    <MultiplierLogo size={18} className="ml-3" />
+                    <span
+                      className="ml-1.5 font-medium"
+                      style={{ color: co.multiplierBrandColor || 'var(--multiplier-brand)' }}
+                    >
+                      {co.payrollCaption}
+                    </span>
+                  </>
+                ) : null}
               </div>
             </header>
           ) : null}
@@ -286,7 +442,7 @@ export function Shell() {
               {overview ? (
                 <>
                   {' '}
-                  · {overview.statusLine.openActions} open actions ·{' '}
+                  · {openActions === 0 ? 'No issues' : `${openActions} open ${openActions === 1 ? 'action' : 'actions'}`} ·{' '}
                   {overview.statusLine.countdown}
                 </>
               ) : null}

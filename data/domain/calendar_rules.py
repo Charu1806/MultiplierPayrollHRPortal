@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import calendar
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Literal, Union
 
 from .config import cycle_config
@@ -31,6 +31,7 @@ APPROVAL = REVIEW_CLOSE
 FUNDING_DUE = _d(_OCT["fundingDue"])
 SUBMITTED = _d(_OCT["submitted"])
 PAY_DATE = _d(_OCT["payDate"])
+PAYMENT_RETURNED = PAY_DATE + timedelta(days=1)
 
 NOV_OPEN = _d(_NOV["open"])
 NOV_CUTOFF = _d(_NOV["inputFinalisation"])
@@ -124,8 +125,11 @@ def _cycle_payload(key: CycleKey, c: Dict[str, Any]) -> Dict[str, Any]:
         "key": key,
         "label": c["label"],
         "id": c["id"],
-        "inputFinalisation": c["inputFinalisation"],
-        "calculation": c.get("calculation"),
+        "inputDeadline": c.get("inputDeadline") or c["inputFinalisation"],
+        "inputFinalisation": c.get("inputDeadline") or c["inputFinalisation"],
+        "finalSync": c.get("finalSync") or c.get("calculation"),
+        "fundingRequest": c.get("fundingRequest") or c.get("fundingDue"),
+        "calculation": c.get("finalSync") or c.get("calculation"),
         "reviewOpen": c.get("reviewOpen") or c.get("approval"),
         "reviewClose": c.get("reviewClose") or c.get("approval"),
         "approval": c.get("reviewClose") or c.get("approval"),
@@ -291,15 +295,15 @@ def review_bounds(value: DateLike) -> tuple[date, date]:
 
 
 def review_window_state(value: DateLike, *, for_october_summary: bool = False) -> ReviewWindow:
+    """Open from the cycle start through the shared input deadline."""
     d = parse_date(value)
-    if for_october_summary or (NOV_OPEN > d >= date(2026, 10, 23)):
-        # Closed October review (Oct 23–31) or explicit October summary
+    open_, close = review_bounds(d)
+    if for_october_summary or (d > REVIEW_CLOSE and d < NOV_OPEN):
         if d < REVIEW_OPEN:
             return "before"
         if d <= REVIEW_CLOSE:
             return "open"
         return "closed"
-    open_, close = review_bounds(d)
     if d < open_:
         return "before"
     if d <= close:
@@ -308,9 +312,9 @@ def review_window_state(value: DateLike, *, for_october_summary: bool = False) -
 
 
 def show_october_closed_review(value: DateLike) -> bool:
-    """Oct 23–31 show closed October review; from Nov 1 Review is November."""
+    """After the October deadline, and before November opens, October review is closed."""
     d = parse_date(value)
-    return date(2026, 10, 23) <= d <= date(2026, 10, 31)
+    return REVIEW_CLOSE < d < NOV_OPEN
 
 
 def _stage_nov_style(
@@ -333,43 +337,21 @@ def _stage_nov_style(
 
 
 def stage_for_date(value: DateLike) -> str:
+    """Inputs and review close together. Then funding, submission, and pay day from the cycle."""
     d = parse_date(value)
-    if d >= JAN_OPEN:
-        return _stage_nov_style(
-            d,
-            cutoff=JAN_CUTOFF,
-            review_open=JAN_REVIEW_OPEN,
-            review_close=JAN_REVIEW_CLOSE,
-            pay_date=JAN_PAY_DATE,
-        )
-    if d >= DEC_OPEN:
-        return _stage_nov_style(
-            d,
-            cutoff=DEC_CUTOFF,
-            review_open=DEC_REVIEW_OPEN,
-            review_close=DEC_REVIEW_CLOSE,
-            pay_date=DEC_PAY_DATE,
-        )
-    if d >= NOV_OPEN:
-        if d <= NOV_CUTOFF:
-            return "Input finalisation"
-        if d < NOV_REVIEW_OPEN:
-            return CALC_STAGE
-        if d <= NOV_REVIEW_CLOSE:
-            return "Review"
-        if d < NOV_PAY_DATE:
-            return "Submitted"
-        return "Paid"
-    if d <= CUTOFF:
-        return "Input finalisation"
-    if d < REVIEW_OPEN:
-        return CALC_STAGE
-    if d <= REVIEW_CLOSE:
-        return "Review"
-    if d < SUBMITTED:
+    cd = cycle_dates(d)
+    deadline = parse_date(cd.get("inputDeadline") or cd["inputFinalisation"])
+    funding = parse_date(cd.get("fundingDue") or cd.get("fundingRequest") or cd["payDate"])
+    submitted = parse_date(cd["submitted"]) if cd.get("submitted") else None
+    pay = parse_date(cd["payDate"])
+    if d <= deadline:
+        return "Inputs & review"
+    if d <= funding:
         return "Funding"
-    if d < PAY_DATE:
+    if submitted and d < pay:
         return "Submitted"
+    if d < pay:
+        return "Funding"
     return "Paid"
 
 
@@ -397,7 +379,7 @@ def countdown_text(value: DateLike) -> str:
     d = parse_date(value)
     cutoff = _active_cutoff(d)
     if d > cutoff:
-        return "Input finalisation closed"
+        return "Input deadline passed"
     days = (cutoff - d).days
     if days == 0:
         return "Cutoff today"

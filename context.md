@@ -149,13 +149,24 @@ Countdown: before/on Oct 15 → "N days left" / "Cutoff today"; after → "Input
 
 - Customer: **Acme Tech**. HR tool: **Workday**.
 - 120 employees before the demo: **India 50, UK 30, Germany 22, Brazil 18**. 4 countries only (no Philippines). Priya and Arjun are added during the demo (→ 122).
-- October 2026: input finalisation **Oct 15** · calculation **Oct 16** · review window **Oct 17–22** · funding due **Oct 23** (finance) · submitted **Oct 25** · pay date **Oct 28**.
-- November 2026: cycle opens **Nov 1** · input finalisation **Nov 15** · calculation **Nov 16** · review window **Nov 17–22** · pay date **Nov 28**.
-- **Cycle-aware:** from Nov 1 every page shows the November cycle. October is only via "View October summary →" (read-only). No stale October copy ("fixed by Oct 15", "Review closed · Oct 22") in November.
+- October 2026: input deadline **Oct 22** · final sync **Oct 23** · funding request **Oct 23** · submitted **Oct 25** · pay date **Oct 28**.
+- November 2026: input deadline **Nov 22** · final sync **Nov 23** · funding request **Nov 23** · submitted **Nov 25** · pay date **Nov 28**.
+- Action needed and Review & approve share that input deadline. There is no separate calculation day and no review window that opens later.
+- **Cycle-aware:** from Nov 1 every page shows the November cycle. October is a read-only previous cycle. A change synced after the deadline is marked Next cycle and does not enter the locked payroll.
 
 ### Stages (in order)
 
-`Input finalisation → Calculation & final checks → Review → Funding → Submitted → Paid`
+`Sync & resolve → Final sync → Funding → Submitted → Paid`
+
+### HR source and payroll snapshot
+
+People is the customer's HR system (Workday, simulated). Multiplier Payroll keeps its own snapshot.
+
+- HR owns employment, salary, bonus, leave, manager, and other compensation changes. Saving those fields updates the HR source only and confirms **Saved in HR tool**. It does not change the payroll snapshot.
+- Payroll owns tax identifiers and bank details where the field owner is the employee or Multiplier. Saving those revalidates the issue immediately.
+- The snapshot updates on **Sync from Workday** (at most one manual full sync per calendar day, `sync.maxPerDay`) or on the scheduled final sync. The final sync does not use up the manual allowance and does not duplicate events, funding snapshots, or emails if it runs again.
+- A failed sync leaves the last successful snapshot and timestamp in place.
+- The employee profile's payroll block is read-only and shows the last successful sync time. Payroll warnings stay off People screens.
 
 ### Types (reference; authoritative DTOs in `src/api/types.ts`, schema in `data/schema.sql`)
 

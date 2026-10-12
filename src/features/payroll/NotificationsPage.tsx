@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { ArrowRight, Mail, MessageSquare } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { ArrowRight, Bell, Mail, MessageSquare } from 'lucide-react'
 import { Button, EmptyState, PageHeader, StatusChip } from '@/components'
 import { formatIsoDate } from '@/features/payroll/lib/labels'
+import { notificationVisible } from '@/features/persona'
 import { useAppStore } from '@/store'
 import type { NotificationListItem } from '@/api/types'
 
@@ -25,12 +26,15 @@ function isUndelivered(item: NotificationListItem): boolean {
 function InboxItem({
   item,
   selected,
+  unreadIndex,
   onSelect,
 }: {
   item: NotificationListItem
   selected: boolean
+  unreadIndex: number | null
   onSelect: () => void
 }) {
+  const unread = item.unread !== false
   return (
     <button
       type="button"
@@ -43,14 +47,24 @@ function InboxItem({
       ].join(' ')}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-medium text-text-secondary">
+        <span className="flex items-center gap-1.5 text-[11px] font-medium text-text-secondary">
+          {unreadIndex != null ? (
+            <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-600 px-1 text-[10px] font-semibold tabular text-white">
+              {unreadIndex}
+            </span>
+          ) : null}
           Multiplier Payroll
         </span>
         <span className="tabular text-[11px] text-text-muted">
           {formatIsoDate(item.sendDate)}
         </span>
       </div>
-      <p className="mt-0.5 truncate text-[13px] font-semibold text-text-primary">
+      <p
+        className={[
+          'mt-0.5 truncate text-[13px] text-text-primary',
+          unread ? 'font-semibold' : 'font-medium text-text-secondary',
+        ].join(' ')}
+      >
         {item.subject}
       </p>
       <p className="mt-0.5 truncate text-xs text-text-secondary">
@@ -77,16 +91,35 @@ export function NotificationsPage() {
   const navigate = useNavigate()
   const asOf = useAppStore((s) => s.asOf)
   const notifications = useAppStore((s) => s.notifications)
+  const persona = useAppStore((s) => s.persona)
+  const company = useAppStore((s) => s.company)
   const selected = useAppStore((s) => s.selectedNotification)
   const loadNotification = useAppStore((s) => s.loadNotification)
   const pushToast = useAppStore((s) => s.pushToast)
   const [recipientFilter, setRecipientFilter] = useState<RecipientFilter>('all')
 
   const inbox = useMemo(() => {
-    const sorted = [...notifications].sort((a, b) => b.sendDate.localeCompare(a.sendDate))
-    if (recipientFilter === 'all') return sorted
-    return sorted.filter((item) => recipientBucket(item) === recipientFilter)
-  }, [notifications, recipientFilter])
+    const sorted = [...notifications].sort((a, b) => {
+      const byDate = b.sendDate.localeCompare(a.sendDate)
+      if (byDate !== 0) return byDate
+      const aHas = a.createdAt ? 1 : 0
+      const bHas = b.createdAt ? 1 : 0
+      if (aHas !== bHas) return bHas - aHas
+      return (b.createdAt || '').localeCompare(a.createdAt || '')
+    })
+    const scoped = sorted.filter((item) => notificationVisible(item, persona, company))
+    if (recipientFilter === 'all') return scoped
+    return scoped.filter((item) => recipientBucket(item) === recipientFilter)
+  }, [notifications, recipientFilter, persona, company])
+
+  const unreadCount = inbox.filter((item) => item.unread !== false).length
+  let unreadCursor = 0
+  const unreadLabel =
+    unreadCount === 0
+      ? 'No unread messages'
+      : unreadCount === 1
+        ? '1 unread message'
+        : `${unreadCount} unread messages`
 
   const filterChips: { key: RecipientFilter; label: string }[] = [
     { key: 'all', label: 'All' },
@@ -108,7 +141,7 @@ export function NotificationsPage() {
     <div>
       <PageHeader
         title="Notifications"
-        subtitle="Reminder-first: one grouped email per nudge · Slack arrives in V2"
+        subtitle="Reminder-first: one grouped email per nudge · Slack arrives in V2 · In-app alerts arrive in V3"
       />
 
       <div className="mb-3 flex items-center gap-1 border-b border-border">
@@ -118,8 +151,15 @@ export function NotificationsPage() {
         >
           <Mail size={14} />
           Email
-          <span className="rounded border border-border px-1 text-[10px] tabular text-text-secondary">
-            {inbox.length}
+          <span
+            className={[
+              'rounded border px-1 text-[10px] tabular',
+              unreadCount > 0
+                ? 'border-rose-200 bg-rose-50 text-rose-700'
+                : 'border-border text-text-secondary',
+            ].join(' ')}
+          >
+            {unreadCount > 0 ? unreadCount : inbox.length}
           </span>
         </button>
         <button
@@ -131,6 +171,17 @@ export function NotificationsPage() {
           Slack
           <span className="rounded border border-border px-1 text-[10px] font-medium">
             V2
+          </span>
+        </button>
+        <button
+          type="button"
+          className="flex items-center gap-1.5 px-3 py-2 text-[13px] text-text-muted opacity-60"
+          onClick={() => pushToast('In-app alerts are coming in V3')}
+        >
+          <Bell size={14} />
+          In-app alerts
+          <span className="rounded border border-border px-1 text-[10px] font-medium">
+            V3
           </span>
         </button>
       </div>
@@ -162,16 +213,20 @@ export function NotificationsPage() {
         <div className="grid grid-cols-[320px_1fr] gap-4">
           <aside className="space-y-2" data-testid="inbox">
             <p className="px-1 text-[11px] font-medium uppercase tracking-wide text-text-muted">
-              Inbox · newest first
+              Inbox · newest first · {unreadLabel}
             </p>
-            {inbox.map((item) => (
-              <InboxItem
-                key={item.id}
-                item={item}
-                selected={selected?.id === item.id}
-                onSelect={() => void loadNotification(item.id)}
-              />
-            ))}
+            {inbox.map((item) => {
+              const unreadIndex = item.unread !== false ? ++unreadCursor : null
+              return (
+                <InboxItem
+                  key={item.id}
+                  item={item}
+                  unreadIndex={unreadIndex}
+                  selected={selected?.id === item.id}
+                  onSelect={() => void loadNotification(item.id)}
+                />
+              )
+            })}
           </aside>
 
           <section
@@ -185,8 +240,9 @@ export function NotificationsPage() {
                     {selected.subject}
                   </h2>
                   <p className="mt-1 text-xs text-text-secondary">
-                    From Multiplier Payroll · To: {selected.recipient} ·{' '}
-                    <span className="tabular">{formatIsoDate(selected.sendDate)}, 2026</span>
+                    From Multiplier Payroll · To: {selected.recipient}
+                    {selected.cc ? ` · Cc: ${selected.cc}` : ''} ·{' '}
+                    <span className="tabular">{formatIsoDate(selected.sendDate)}</span>
                   </p>
                 </div>
                 <div className="space-y-4 px-5 py-4 text-[13px] text-text-primary">
@@ -197,6 +253,22 @@ export function NotificationsPage() {
                     </p>
                   ) : null}
                   <p className="whitespace-pre-wrap">{selected.bodySummary}</p>
+
+                  {selected.policy ? (
+                    <p className="text-[13px]">
+                      <Link
+                        to={selected.policy.href}
+                        className="font-medium text-sky-800 underline decoration-sky-800/40 underline-offset-2"
+                      >
+                        {selected.policy.label}
+                      </Link>
+                      {selected.policy.note ? (
+                        <span className="ml-2 text-[11px] font-medium uppercase tracking-wide text-text-muted">
+                          {selected.policy.note}
+                        </span>
+                      ) : null}
+                    </p>
+                  ) : null}
 
                   {selected.actions.length > 0 ? (
                     <div>
@@ -213,7 +285,16 @@ export function NotificationsPage() {
                             key={`${a.actionText}-${index}`}
                             className="flex items-center justify-between gap-3 px-3 py-2"
                           >
-                            <span>{a.actionText}</span>
+                            {a.href ? (
+                              <Link
+                                to={a.href}
+                                className="font-medium text-sky-800 underline decoration-sky-800/40 underline-offset-2"
+                              >
+                                {a.actionText}
+                              </Link>
+                            ) : (
+                              <span>{a.actionText}</span>
+                            )}
                             {a.deadline ? (
                               <span className="shrink-0 tabular text-xs text-text-secondary">
                                 Deadline {formatIsoDate(a.deadline)}
@@ -235,7 +316,7 @@ export function NotificationsPage() {
                       variant="primary"
                       onClick={() => navigate(selected.cta.href)}
                     >
-                      {selected.cta.label}
+                      {selected.cta.label.replace(/\s*→\s*$/, '')}
                       <ArrowRight size={14} className="ml-1.5" />
                     </Button>
                     <span className="text-[11px] text-text-muted">

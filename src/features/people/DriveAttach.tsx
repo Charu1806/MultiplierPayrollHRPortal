@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Button, StatusChip } from '@/components'
 import { clarityApi } from '@/api/clarityClient'
+import { DrivePickCancelled, googleDriveReady, pickDriveFile } from '@/lib/googleDrive'
 import { useAppStore } from '@/store'
 import type { MappingRowDto } from '@/api/types'
 
@@ -18,7 +19,8 @@ const HELPERS: Record<DocType, string> = {
   'Offer letter': "We'll read name, job title, start date and salary.",
   'Bonus letter': "We'll read the amount, type and pay month.",
   'Reimbursement bill': "We'll read the amount, date and what it was for.",
-  'Salary revision letter': "We'll read the new salary and effective date.",
+  'Salary revision letter':
+    "We'll read the new monthly salary. The salary issue closes once this letter is stored.",
   'Resignation / exit letter': "We'll read last working day and notice details.",
   Other: "We'll extract any payroll fields we can find.",
 }
@@ -33,7 +35,9 @@ const DEMO_BY_TYPE: Record<DocType, { file: string; label: string }[]> = {
   'Reimbursement bill': [
     { file: 'travel_reimbursement_chloe.pdf', label: 'Demo · UK reimbursement (Chloe)' },
   ],
-  'Salary revision letter': [],
+  'Salary revision letter': [
+    { file: 'salary_revision_james_patel.pdf', label: 'Demo · UK salary revision (James)' },
+  ],
   'Resignation / exit letter': [],
   Other: [
     { file: 'offer_letter_priya.pdf', label: 'Demo · India offer' },
@@ -51,6 +55,8 @@ type Props = {
   /** When set, flag if document employee name differs */
   employeeName?: string
   defaultType?: DocType
+  /** Keep the document type fixed. The caller already chose hike or bonus. */
+  lockType?: boolean
   /** Compact: only Upload / Demo / Drive (for one-time payments) */
   compact?: boolean
   onExtracted?: (fileName: string, mappings: MappingRowDto[]) => void
@@ -61,6 +67,7 @@ export function DriveAttach({
   employeeId,
   employeeName,
   defaultType = 'Offer letter',
+  lockType = false,
   compact = false,
   onExtracted,
   onMappingsChange,
@@ -76,7 +83,7 @@ export function DriveAttach({
   const [fileName, setFileName] = useState<string | null>(null)
   const [mappings, setMappings] = useState<MappingRowDto[] | null>(null)
   const [nameMismatch, setNameMismatch] = useState<string | null>(null)
-  const googleReady = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID)
+  const googleReady = googleDriveReady()
   const demos = useMemo(() => DEMO_BY_TYPE[docType], [docType])
 
   useEffect(() => {
@@ -164,14 +171,14 @@ export function DriveAttach({
     {
       id: 'gdrive',
       label: 'Google Drive',
-      hint: googleReady ? 'Picker' : 'Not set up',
+      hint: googleReady ? 'Sign in' : 'Not set up',
       disabled: !googleReady,
     },
   ]
 
   return (
     <div className="space-y-3 rounded border border-border bg-surface p-3">
-      {!compact ? (
+      {!compact && !lockType ? (
         <>
           <label className="block text-xs text-text-secondary">
             Document type
@@ -264,19 +271,28 @@ export function DriveAttach({
           <Button
             variant="secondary"
             disabled={busy || !googleReady}
-            onClick={() =>
-              pushToast(
-                googleReady
-                  ? 'Google Picker – sign in, then pick a PDF from HR Documents'
-                  : 'Google Drive not set up – see README',
-              )
-            }
+            onClick={() => {
+              void (async () => {
+                setBusy(true)
+                try {
+                  const picked = await pickDriveFile()
+                  await extract(picked.fileName, picked.fileId, picked.accessToken)
+                } catch (err) {
+                  if (err instanceof DrivePickCancelled) return
+                  pushToast(err instanceof Error ? err.message : 'Could not open Google sign-in')
+                } finally {
+                  setBusy(false)
+                }
+              })()
+            }}
           >
-            Choose from Google Drive
+            {busy ? 'Waiting for Google…' : 'Sign in with Google'}
           </Button>
-          {!googleReady ? (
-            <p className="mt-1 text-[11px] text-text-muted">Google Drive not set up – see README</p>
-          ) : null}
+          <p className="mt-1 text-[11px] text-text-muted">
+            {googleReady
+              ? 'A Google window opens to sign in. Then pick a PDF, Word file, or image.'
+              : 'Google Drive not set up – see README'}
+          </p>
         </div>
       ) : null}
 

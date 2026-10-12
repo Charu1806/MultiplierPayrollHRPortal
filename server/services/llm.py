@@ -140,25 +140,39 @@ def _chat_json_anthropic(key: str, system: str, user: str, *, timeout: int) -> D
     return _parse_json_content("\n".join(parts))
 
 
+def download_drive_bytes(file_id: str, access_token: str) -> bytes:
+    """Download a Drive file. The token is used once and never stored."""
+    if not access_token:
+        raise PermissionError("Couldn't open this file – check you have access")
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    def _get(url: str) -> bytes:
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            return resp.read()
+
+    media = f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media"
+    try:
+        return _get(media)
+    except urllib.error.HTTPError as exc:
+        # Native Google Docs are not downloadable as media; export them as PDF.
+        if exc.code not in (400, 403):
+            raise PermissionError("Couldn't open this file – check you have access") from exc
+        export = (
+            f"https://www.googleapis.com/drive/v3/files/{file_id}/export"
+            "?mimeType=application/pdf"
+        )
+        try:
+            return _get(export)
+        except urllib.error.HTTPError as export_exc:
+            raise PermissionError("Couldn't open this file – check you have access") from export_exc
+
+
 def download_drive_text(file_id: str, access_token: str, filename: str = "") -> str:
     """Download file bytes from Drive; caller must not persist the token."""
-    del filename
-    url = f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media"
-    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {access_token}"})
-    try:
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            data = resp.read()
-    except urllib.error.HTTPError as exc:
-        raise PermissionError("Couldn't open this file – check you have access") from exc
-    # Best-effort text: latin-1 ignore for binary PDFs when pypdf is unavailable
-    try:
-        from pypdf import PdfReader  # type: ignore
-        import io
+    from server.services.extraction import text_from_bytes
 
-        reader = PdfReader(io.BytesIO(data))
-        return "\n".join(page.extract_text() or "" for page in reader.pages)
-    except Exception:  # noqa: BLE001
-        return data.decode("utf-8", errors="ignore")
+    return text_from_bytes(download_drive_bytes(file_id, access_token), filename)
 
 
 def map_document(text: str) -> Dict[str, Any]:
@@ -236,6 +250,46 @@ def decide_review_line(line: Dict[str, Any], *, force: bool = False) -> Dict[str
 
     _decision_cache[cache_key] = decision
     return decision
+
+
+def classify_sync_change(kind: str, summary: str) -> Dict[str, Any]:
+    """Decide whether a synced change is Action needed, Review, or already matched.
+
+    The model chooses the queue. It does not approve the change. Without a configured
+    model, pay changes go to Review and everything else is matched. Missing fields stay
+    on Action needed through the existing validation rules.
+    """
+    if not llm_configured():
+        if kind in ("hike", "bonus", "added", "leave", "exited"):
+            return {
+                "queue": "review",
+                "reason": "Pay change needs a person to review it.",
+                "source": "rules",
+            }
+        return {"queue": "matched", "reason": "No pay exception on this change.", "source": "rules"}
+
+    system = (
+        "You route one payroll sync change into a queue. "
+        "Return JSON only: {\"queue\":\"action\"|\"review\"|\"matched\",\"reason\":\"short sentence\"}. "
+        "Use action only for missing or invalid required data. "
+        "Use review for a new employee, bonus, hike, leave, or exit that a person must authorise. "
+        "Use matched when nothing is missing and no authorisation is required. "
+        "Do not approve the change."
+    )
+    try:
+        raw = _chat_json(system, json.dumps({"kind": kind, "summary": summary}), timeout=20)
+        queue = str(raw.get("queue") or "review").strip().lower()
+        if queue not in ("action", "review", "matched"):
+            queue = "review"
+        return {
+            "queue": queue,
+            "reason": str(raw.get("reason") or "Classified during sync.").strip(),
+            "source": "llm",
+        }
+    except Exception:
+        if kind in ("hike", "bonus", "added", "leave", "exited"):
+            return {"queue": "review", "reason": "Pay change needs a person to review it.", "source": "rules"}
+        return {"queue": "matched", "reason": "No pay exception on this change.", "source": "rules"}
 
 
 def decide_pay_edit(
@@ -350,6 +404,68 @@ def _fallback_review_decision(line: Dict[str, Any], *, error: Optional[str] = No
         "label": "Approve?" if recommend == "approve" else "Hold",
         "source": "fallback",
     }
+
+
+_payment_cache: Dict[str, List[str]] = {}
+
+
+def payment_required_fields(country: str, fields: List[str]) -> List[str]:
+    """Which of `fields` are required to pay someone in `country`.
+
+    Owner (HR or employee) is irrelevant. The model decides. Tests and a missing
+    key use the offline fallback so payroll still loads.
+    """
+    ordered = [f for f in fields if f]
+    if not ordered:
+        return []
+    key = f"{country}|{'|'.join(sorted(ordered))}"
+    if key in _payment_cache:
+        return list(_payment_cache[key])
+
+    fallback = _fallback_payment_fields(country, ordered)
+    if os.environ.get("PYTEST_CURRENT_TEST") or not llm_configured():
+        _payment_cache[key] = fallback
+        return list(fallback)
+
+    system = (
+        "You decide which fields are required to pay an employee. "
+        "A field is required only if payroll cannot legally or practically pay them without it "
+        "(tax identifier, bank details used to send money, salary, start date). "
+        "HR-record fields that are not needed to run pay, such as the manager's name, are not required. "
+        "Whether HR or the employee owns the field does not matter. "
+        "Return JSON only: {\"paymentRequired\": [names copied from the input list]}. "
+        "Do not add names that were not in the input."
+    )
+    user = json.dumps({"country": country, "fields": ordered})
+    try:
+        raw = _chat_json(system, user, timeout=25)
+        chosen = raw.get("paymentRequired")
+        if not isinstance(chosen, list):
+            result = fallback
+        else:
+            allowed = set(ordered)
+            result = [f for f in ordered if f in allowed and f in {str(c) for c in chosen}]
+    except Exception:  # noqa: BLE001 — pay timing must still load
+        result = fallback
+    _payment_cache[key] = result
+    return list(result)
+
+
+def _fallback_payment_fields(country: str, fields: List[str]) -> List[str]:
+    """Offline stand-in: country payment fields from rules, plus salary and start date. Not Manager."""
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[2]
+    data = str(root / "data")
+    if data not in sys.path:
+        sys.path.insert(0, data)
+    from domain.config import rules_config
+
+    rules = rules_config()
+    listed = set((rules.get("requiredFields") or {}).get(country) or [])
+    listed.update({"Start date", "Salary"})
+    return [f for f in fields if f in listed]
 
 
 _explain_cache: Dict[str, str] = {}

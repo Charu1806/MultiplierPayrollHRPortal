@@ -81,6 +81,12 @@ def submit_form(
     form_tokens.mark_used(store, resolved["jti"])
 
     first = emp["name"].split()[0]
+    on_track = (emp.get("payTiming") or {}).get("level") == "green"
+    if on_track:
+        return {
+            "employee": emp,
+            "message": "Thanks for adding your details. Payment is on track.",
+        }
     cycle = store.get_current_cycle(customer_id)
     if cycle:
         store.add_notification(

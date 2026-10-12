@@ -43,6 +43,88 @@ class Store:
                 "ALTER TABLE review_lines ADD COLUMN requires_employee_notified INTEGER NOT NULL DEFAULT 0"
             )
             self.conn.commit()
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS notification_reads (
+              notification_id TEXT PRIMARY KEY,
+              read_on        TEXT NOT NULL,
+              read_at        TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+            """
+        )
+        self.conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS hr_employees (
+              employee_id TEXT PRIMARY KEY,
+              base_salary REAL NOT NULL,
+              allowances REAL NOT NULL DEFAULT 0,
+              unpaid_leave_days INTEGER NOT NULL DEFAULT 0,
+              role TEXT,
+              manager_name TEXT,
+              status TEXT,
+              updated_at TEXT NOT NULL,
+              updated_by TEXT
+            );
+            CREATE TABLE IF NOT EXISTS sync_runs (
+              id TEXT PRIMARY KEY,
+              customer_id TEXT NOT NULL,
+              cycle_id TEXT NOT NULL,
+              trigger TEXT NOT NULL,
+              status TEXT NOT NULL,
+              synced_at TEXT NOT NULL,
+              actor TEXT NOT NULL,
+              added INTEGER NOT NULL DEFAULT 0,
+              changed INTEGER NOT NULL DEFAULT 0,
+              exited INTEGER NOT NULL DEFAULT 0,
+              summary TEXT,
+              error TEXT
+            );
+            CREATE TABLE IF NOT EXISTS sync_changes (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              sync_id TEXT NOT NULL,
+              employee_id TEXT,
+              kind TEXT NOT NULL,
+              summary TEXT NOT NULL,
+              cycle_assignment TEXT NOT NULL,
+              created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS funding_snapshots (
+              id TEXT PRIMARY KEY,
+              customer_id TEXT NOT NULL,
+              cycle_id TEXT NOT NULL,
+              kind TEXT NOT NULL,
+              taken_at TEXT NOT NULL,
+              payload_json TEXT NOT NULL
+            );
+            """
+        )
+        hr_count = self.conn.execute("SELECT COUNT(*) FROM hr_employees").fetchone()[0]
+        if hr_count == 0:
+            self.conn.execute(
+                """
+                INSERT INTO hr_employees (
+                  employee_id, base_salary, allowances, unpaid_leave_days, role, manager_name, status, updated_at, updated_by
+                )
+                SELECT id, base_salary, allowances, unpaid_leave_days, role, manager_name, status,
+                       '2026-10-01T09:00:00', 'Workday'
+                FROM employees
+                """
+            )
+        sync_count = self.conn.execute("SELECT COUNT(*) FROM sync_runs").fetchone()[0]
+        if sync_count == 0:
+            cycle = self.conn.execute(
+                "SELECT id, customer_id FROM payroll_cycles ORDER BY id ASC LIMIT 1"
+            ).fetchone()
+            if cycle:
+                self.conn.execute(
+                    """
+                    INSERT INTO sync_runs (
+                      id, customer_id, cycle_id, trigger, status, synced_at, actor, added, changed, exited, summary
+                    ) VALUES ('sync_seed', ?, ?, 'Manual', 'success', '2026-10-01T09:00:00', 'Workday', 0, 0, 0, '+0 added, 0 changed, 0 exited')
+                    """,
+                    (cycle[1], cycle[0]),
+                )
+        self.conn.commit()
         self._schema_ready = True
 
     # ------------------------------------------------------------------ customer / cycle
@@ -139,6 +221,120 @@ class Store:
         cols = ", ".join(f"{k} = ?" for k in fields)
         self.conn.execute(f"UPDATE employees SET {cols} WHERE id = ?", (*fields.values(), employee_id))
         self.conn.commit()
+
+    def get_hr_employee(self, employee_id: str) -> Optional[Dict[str, Any]]:
+        return row_to_dict(
+            self.conn.execute("SELECT * FROM hr_employees WHERE employee_id = ?", (employee_id,)).fetchone()
+        )
+
+    def list_hr_employees(self) -> List[Dict[str, Any]]:
+        return rows_to_dicts(self.conn.execute("SELECT * FROM hr_employees").fetchall())
+
+    def upsert_hr_employee(self, employee_id: str, **fields: Any) -> None:
+        current = self.get_hr_employee(employee_id)
+        if not current:
+            emp = self.get_employee(employee_id)
+            if not emp:
+                raise LookupError("employee_not_found")
+            self.conn.execute(
+                """
+                INSERT INTO hr_employees (
+                  employee_id, base_salary, allowances, unpaid_leave_days, role, manager_name, status, updated_at, updated_by
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    employee_id,
+                    emp["base_salary"],
+                    emp.get("allowances") or 0,
+                    emp.get("unpaid_leave_days") or 0,
+                    emp.get("role"),
+                    emp.get("manager_name"),
+                    emp.get("status"),
+                    fields.get("updated_at"),
+                    fields.get("updated_by"),
+                ),
+            )
+        cols = ", ".join(f"{k} = ?" for k in fields)
+        self.conn.execute(
+            f"UPDATE hr_employees SET {cols} WHERE employee_id = ?",
+            (*fields.values(), employee_id),
+        )
+        self.conn.commit()
+
+    def latest_successful_sync(self, customer_id: str, as_of: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Latest successful sync. With as_of, ignore runs dated after that prototype day."""
+        sql = """
+            SELECT * FROM sync_runs
+            WHERE customer_id = ? AND status = 'success'
+        """
+        params: List[Any] = [customer_id]
+        if as_of:
+            sql += " AND substr(synced_at, 1, 10) <= ?"
+            params.append(as_of[:10])
+        sql += " ORDER BY synced_at DESC, rowid DESC LIMIT 1"
+        return row_to_dict(self.conn.execute(sql, params).fetchone())
+
+    def manual_syncs_on(self, customer_id: str, day: str) -> int:
+        return int(
+            self.conn.execute(
+                """
+                SELECT COUNT(*) FROM sync_runs
+                WHERE customer_id = ? AND trigger = 'Manual' AND status = 'success'
+                  AND id != 'sync_seed' AND synced_at LIKE ?
+                """,
+                (customer_id, f"{day}%"),
+            ).fetchone()[0]
+        )
+
+    def successful_final_sync(self, cycle_id: str) -> Optional[Dict[str, Any]]:
+        return row_to_dict(
+            self.conn.execute(
+                """
+                SELECT * FROM sync_runs
+                WHERE cycle_id = ? AND trigger = 'Final' AND status = 'success'
+                ORDER BY synced_at DESC LIMIT 1
+                """,
+                (cycle_id,),
+            ).fetchone()
+        )
+
+    def sync_changes_for(self, sync_id: str) -> List[Dict[str, Any]]:
+        return rows_to_dicts(
+            self.conn.execute(
+                "SELECT * FROM sync_changes WHERE sync_id = ? ORDER BY id DESC",
+                (sync_id,),
+            ).fetchall()
+        )
+
+    def recent_sync_changes(self, customer_id: str, limit: int = 5) -> List[Dict[str, Any]]:
+        return rows_to_dicts(
+            self.conn.execute(
+                """
+                SELECT c.* FROM sync_changes c
+                JOIN sync_runs r ON r.id = c.sync_id
+                WHERE r.customer_id = ?
+                ORDER BY c.created_at DESC, c.id DESC
+                LIMIT ?
+                """,
+                (customer_id, limit),
+            ).fetchall()
+        )
+
+    def funding_snapshot(self, cycle_id: str, kind: str) -> Optional[Dict[str, Any]]:
+        return row_to_dict(
+            self.conn.execute(
+                "SELECT * FROM funding_snapshots WHERE cycle_id = ? AND kind = ? ORDER BY taken_at DESC LIMIT 1",
+                (cycle_id, kind),
+            ).fetchone()
+        )
+
+    def notification_by_kind(self, cycle_id: str, kind: str) -> Optional[Dict[str, Any]]:
+        return row_to_dict(
+            self.conn.execute(
+                "SELECT * FROM notifications WHERE cycle_id = ? AND kind = ? ORDER BY rowid DESC LIMIT 1",
+                (cycle_id, kind),
+            ).fetchone()
+        )
 
     # ------------------------------------------------------------------ required / missing fields
     def required_missing_fields(self, employee_id: str) -> List[str]:
@@ -272,6 +468,14 @@ class Store:
         self.conn.commit()
         return xid
 
+    def delete_exits(self, employee_id: str) -> None:
+        self.conn.execute("DELETE FROM exits WHERE employee_id = ?", (employee_id,))
+        self.conn.commit()
+
+    def delete_line_approvals(self, line_id: str) -> None:
+        self.conn.execute("DELETE FROM approvals WHERE line_id = ?", (line_id,))
+        self.conn.commit()
+
     # ------------------------------------------------------------------ issues
     @staticmethod
     def _issue_as_of(row: Dict[str, Any], as_of: Optional[str]) -> Optional[Dict[str, Any]]:
@@ -402,6 +606,16 @@ class Store:
         self.conn.commit()
         return did
 
+    def get_document(self, document_id: str) -> Optional[Dict[str, Any]]:
+        row = row_to_dict(
+            self.conn.execute("SELECT * FROM documents WHERE id = ?", (document_id,)).fetchone()
+        )
+        if not row:
+            return None
+        row["extracted"] = json.loads(row.get("extracted_json") or "{}")
+        row["mappings"] = json.loads(row.get("mappings_json") or "[]")
+        return row
+
     def documents(self, employee_id: str, as_of: Optional[str] = None) -> List[Dict[str, Any]]:
         sql = "SELECT * FROM documents WHERE employee_id = ?"
         params: List[Any] = [employee_id]
@@ -470,10 +684,29 @@ class Store:
                 last_start = i
         return rows[last_start:]
 
+    def notification_read_ids(self) -> set:
+        self.ensure_schema()
+        return {row[0] for row in self.conn.execute("SELECT notification_id FROM notification_reads").fetchall()}
+
+    def mark_notification_read(self, notification_id: str, *, read_on: str) -> None:
+        self.ensure_schema()
+        self.conn.execute(
+            """
+            INSERT INTO notification_reads (notification_id, read_on)
+            VALUES (?, ?)
+            ON CONFLICT(notification_id) DO UPDATE SET read_on = excluded.read_on
+            """,
+            (notification_id, read_on),
+        )
+        self.conn.commit()
+
     # ------------------------------------------------------------------ notifications
     def list_notifications(self, cycle_id: str) -> List[Dict[str, Any]]:
         return rows_to_dicts(
-            self.conn.execute("SELECT * FROM notifications WHERE cycle_id = ?", (cycle_id,)).fetchall()
+            self.conn.execute(
+                "SELECT * FROM notifications WHERE cycle_id = ? ORDER BY send_date DESC, created_at DESC, rowid DESC",
+                (cycle_id,),
+            ).fetchall()
         )
 
     def get_notification(self, notification_id: str) -> Optional[Dict[str, Any]]:
@@ -545,6 +778,17 @@ class Store:
                 (cycle_id, employee_id),
             ).fetchone()
         )
+
+    def current_review_line(self, cycle_id: str, employee_id: str) -> Optional[Dict[str, Any]]:
+        """The line on this cycle's review, skipping next-cycle carry and exit rows."""
+        for row in reversed(self.review_lines(cycle_id)):
+            if row.get("employee_id") != employee_id:
+                continue
+            origin = row.get("origin") or ""
+            if origin in ("october_carry", "exit") or str(row["id"]).startswith("rev_nov_"):
+                continue
+            return row
+        return None
 
     def insert_review_line(self, line: Dict[str, Any]) -> None:
         self.ensure_schema()

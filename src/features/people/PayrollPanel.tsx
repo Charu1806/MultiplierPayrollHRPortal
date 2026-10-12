@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Check, Circle } from 'lucide-react'
 import { Button, StatusChip } from '@/components'
-import { BONUS_DEMO_FILE } from '@/features/people/demoFiles'
 import { formatIsoDate, formatJourneyAt, formatMoney } from '@/features/payroll/lib/labels'
+import { DEFAULT_FIELD_FORMATS, validateFieldValue } from '@/lib/fieldValidation'
 import { useAppStore } from '@/store'
 import type { EmployeeDto, MappingRowDto } from '@/api/types'
 
@@ -17,6 +17,29 @@ function isNameField(field: string) {
 
 type Props = {
   employee: EmployeeDto
+  composer: 'bonus' | 'hike' | null
+  onComposer: (next: 'bonus' | 'hike' | null) => void
+  children?: ReactNode
+}
+
+function LetterLink({
+  letter,
+  label,
+}: {
+  letter?: { id: string; fileName: string } | null
+  label: string
+}) {
+  if (!letter?.id) return null
+  return (
+    <a
+      href={`/api/documents/${letter.id}/file`}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex h-8 items-center px-1 text-[13px] font-medium text-brand underline"
+    >
+      {label}
+    </a>
+  )
 }
 
 function payTone(level: string): 'ok' | 'warn' | 'danger' | 'neutral' {
@@ -26,13 +49,12 @@ function payTone(level: string): 'ok' | 'warn' | 'danger' | 'neutral' {
   return 'neutral'
 }
 
-function resultCopy(employee: EmployeeDto): string {
+function resultCopy(employee: EmployeeDto): string | null {
   const { payTiming, name, missingFields } = employee
-  if (payTiming.level === 'green') {
-    return `Saved to this cycle's payroll. ${name} is on track.`
-  }
+  if (payTiming.level === 'green') return null
   if (payTiming.level === 'amber') {
-    const missing = missingFields.join(' and ') || 'required fields'
+    const holding = employee.paymentMissingFields ?? missingFields
+    const missing = holding.join(' and ') || 'required fields'
     return `Saved to this cycle's payroll – at risk. Add ${missing} by the input finalisation date, otherwise ${name} moves to the next cycle.`
   }
   if (/Moved to /i.test(payTiming.message)) {
@@ -40,6 +62,8 @@ function resultCopy(employee: EmployeeDto): string {
   }
   return payTiming.message
 }
+
+const DETAILS_ON_TRACK = 'Thanks for adding your details. Payment is on track.'
 
 const EMPLOYEE_OWNED = new Set([
   'PAN',
@@ -54,11 +78,10 @@ const EMPLOYEE_OWNED = new Set([
   'PIX key',
 ])
 
-export function PayrollPanel({ employee }: Props) {
+export function PayrollPanel({ employee, composer, onComposer, children }: Props) {
   const [params] = useSearchParams()
   const asOf = useAppStore((s) => s.asOf)
   const fillMissingFields = useAppStore((s) => s.fillMissingFields)
-  const attachDocument = useAppStore((s) => s.attachDocument)
   const remindIssue = useAppStore((s) => s.remindIssue)
   const askConfirm = useAppStore((s) => s.askConfirm)
   const cancelConfirm = useAppStore((s) => s.cancelConfirm)
@@ -71,6 +94,11 @@ export function PayrollPanel({ employee }: Props) {
   const [visibleSteps, setVisibleSteps] = useState(0)
   const [busy, setBusy] = useState(false)
   const [showMissing, setShowMissing] = useState(false)
+  const missingRef = useRef<HTMLDivElement>(null)
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+  const [thanked, setThanked] = useState(false)
+  const fieldFormats = useAppStore((s) => s.rules?.fieldFormats) ?? DEFAULT_FIELD_FORMATS
   const [editMaps, setEditMaps] = useState<MappingRowDto[]>([])
 
   const steps = employee.journeySteps ?? []
@@ -94,15 +122,6 @@ export function PayrollPanel({ employee }: Props) {
     return docName
   }, [editMaps, employee.name])
 
-  const hasBonus = employee.oneOffs.some((o) => /bonus/i.test(o.label))
-  const needsBonusLetter =
-    !hasBonus &&
-    Boolean(
-      employee.payTiming?.message?.match(/3x|spike|confirm/i) ||
-        (employee.septemberPay != null &&
-          employee.salary?.base != null &&
-          employee.salary.base > employee.septemberPay * 1.4),
-    )
   const missing = employee.missingFields || []
   const canFillMissing = missing.length > 0
   const employeeOwnedMissing = missing.filter((f) => EMPLOYEE_OWNED.has(f))
@@ -119,11 +138,29 @@ export function PayrollPanel({ employee }: Props) {
     [issues, employee.id],
   )
 
+  const onTrack = employee.payTiming.level === 'green'
+  const showThanks = onTrack && (thanked || params.get('panel') === 'missing')
+
+  useEffect(() => {
+    setThanked(false)
+  }, [employee.id])
+
   useEffect(() => {
     const openMissing = params.get('panel') === 'missing'
-    setShowMissing(openMissing && (employee.missingFields?.length || 0) > 0)
-    if (openMissing) void refreshIssues()
-  }, [employee.id, employee.missingFields, params, refreshIssues])
+    const hasMissing = (employee.missingFields?.length || 0) > 0
+    setShowMissing(openMissing && hasMissing && !onTrack)
+    if (openMissing && !onTrack) void refreshIssues()
+  }, [employee.id, employee.missingFields, params, refreshIssues, onTrack])
+
+  useEffect(() => {
+    if (params.get('panel') !== 'missing' || (!showMissing && !showThanks)) return
+    const scroll = () => {
+      missingRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' })
+    }
+    scroll()
+    const timer = window.setTimeout(scroll, 250)
+    return () => window.clearTimeout(timer)
+  }, [showMissing, showThanks, params, employee.id])
 
   useEffect(() => {
     if (!steps.length) {
@@ -169,11 +206,36 @@ export function PayrollPanel({ employee }: Props) {
     })
   }
 
-  async function onFillSample() {
+  useEffect(() => {
+    setFieldValues({})
+    setFieldErrors({})
+  }, [employee.id])
+
+  async function onSaveMissing() {
+    const payload: Record<string, string> = {}
+    const errors: Record<string, string> = {}
+    for (const field of missing) {
+      const raw = (fieldValues[field] || '').trim()
+      if (!raw) continue
+      const result = validateFieldValue(field, raw, fieldFormats)
+      if (!result.ok) errors[field] = result.error
+      else payload[field] = result.normalised
+    }
+    setFieldErrors(errors)
+    if (Object.keys(errors).length) return
+    if (!Object.keys(payload).length) {
+      pushToast('Enter at least one missing field')
+      return
+    }
     setBusy(true)
     try {
-      await fillMissingFields(employee.id, { fillSample: true, asOf })
-      pushToast('Missing details added · Payment on track for this cycle')
+      const saved = await fillMissingFields(employee.id, { fields: payload, asOf })
+      if (saved.payTiming.level === 'green') {
+        setThanked(true)
+        pushToast(DETAILS_ON_TRACK)
+      } else {
+        pushToast('Details saved')
+      }
       setShowMissing(false)
     } catch {
       /* toasted */
@@ -182,14 +244,17 @@ export function PayrollPanel({ employee }: Props) {
     }
   }
 
-  async function onAttachBonus() {
+  async function onFillSample() {
     setBusy(true)
     try {
-      await attachDocument(employee.id, {
-        fixture: BONUS_DEMO_FILE, // demo preset PDF; pipeline is filename-agnostic
-        asOf,
-      })
-      pushToast('Bonus letter attached · one-off for this cycle')
+      const saved = await fillMissingFields(employee.id, { fillSample: true, asOf })
+      if (saved.payTiming.level === 'green') {
+        setThanked(true)
+        pushToast(DETAILS_ON_TRACK)
+      } else {
+        pushToast('Details saved')
+      }
+      setShowMissing(false)
     } catch {
       /* toasted */
     } finally {
@@ -209,9 +274,11 @@ export function PayrollPanel({ employee }: Props) {
             <span className="tabular">{asOf}</span>
           </p>
         </div>
-        <StatusChip tone={payTone(employee.payTiming.level)}>
-          {employee.payTiming.message}
-        </StatusChip>
+        {employee.payTiming.level === 'green' ? null : (
+          <StatusChip tone={payTone(employee.payTiming.level)}>
+            {employee.payTiming.message}
+          </StatusChip>
+        )}
       </div>
 
       <div className="space-y-4 px-4 py-4">
@@ -249,8 +316,8 @@ export function PayrollPanel({ employee }: Props) {
           </div>
         ) : (
           <p className="text-xs text-text-secondary">
-            No document journey for this employee yet. Attach an offer or bonus
-            letter to run validation.
+            No document journey for this employee yet. Attach an offer, bonus, or
+            salary revision letter to run validation.
           </p>
         )}
 
@@ -418,18 +485,29 @@ export function PayrollPanel({ employee }: Props) {
           </div>
         ) : null}
 
-        <div
-          className={[
-            'rounded border px-3 py-2.5 text-[13px]',
-            employee.payTiming.level === 'green'
-              ? 'border-status-ok-border bg-status-ok-bg text-status-ok-text'
-              : employee.payTiming.level === 'amber'
+        {showThanks ? (
+          <div
+            id="missing-details"
+            ref={missingRef}
+            className="scroll-mt-4 rounded border border-status-ok-border bg-status-ok-bg px-3 py-2.5 text-[13px] text-status-ok-text"
+            data-testid="details-on-track"
+          >
+            {DETAILS_ON_TRACK}
+          </div>
+        ) : null}
+
+        {resultCopy(employee) ? (
+          <div
+            className={[
+              'rounded border px-3 py-2.5 text-[13px]',
+              employee.payTiming.level === 'amber'
                 ? 'border-status-warn-border bg-status-warn-bg text-status-warn-text'
                 : 'border-status-danger-border bg-status-danger-bg text-status-danger-text',
-          ].join(' ')}
-        >
-          {resultCopy(employee)}
-        </div>
+            ].join(' ')}
+          >
+            {resultCopy(employee)}
+          </div>
+        ) : null}
 
         <div className="flex flex-wrap gap-2">
           {canFillMissing ? (
@@ -447,22 +525,24 @@ export function PayrollPanel({ employee }: Props) {
               {showMissing ? 'Hide missing details' : 'Add missing details'}
             </Button>
           ) : null}
-          {needsBonusLetter ? (
-            <Button
-              variant="primary"
-              disabled={busy}
-              onClick={() => void onAttachBonus()}
-            >
-              Attach bonus letter
-            </Button>
-          ) : null}
           <Button
-            variant="secondary"
+            variant="primary"
             disabled={busy}
-            onClick={() => pushToast('View offer letter – not built in prototype')}
+            data-testid="add-bonus"
+            onClick={() => onComposer(composer === 'bonus' ? null : 'bonus')}
           >
-            View offer letter
+            {composer === 'bonus' ? 'Hide bonus' : 'Add bonus'}
           </Button>
+          <Button
+            variant="primary"
+            disabled={busy}
+            onClick={() => onComposer(composer === 'hike' ? null : 'hike')}
+          >
+            {composer === 'hike' ? 'Hide hike' : 'Add hike'}
+          </Button>
+          <LetterLink letter={employee.letters?.offer} label="View offer letter" />
+          <LetterLink letter={employee.letters?.bonus} label="View bonus letter" />
+          <LetterLink letter={employee.letters?.hike} label="View hike letter" />
           {employee.payTiming.instantPaymentDisabled || employee.payTiming.showOffCycleStub ? (
             <Button
               variant="ghost"
@@ -479,9 +559,13 @@ export function PayrollPanel({ employee }: Props) {
           ) : null}
         </div>
 
+        {children}
+
         {showMissing && canFillMissing ? (
           <div
-            className="rounded border border-border bg-canvas px-3 py-3"
+            id="missing-details"
+            ref={missingRef}
+            className="scroll-mt-4 rounded border border-border bg-canvas px-3 py-3"
             data-testid="missing-details-panel"
           >
             <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-text-muted">
@@ -495,16 +579,57 @@ export function PayrollPanel({ employee }: Props) {
               <thead>
                 <tr className="text-[11px] uppercase tracking-wide text-text-muted">
                   <th className="py-1.5 font-medium">Field</th>
-                  <th className="py-1.5 font-medium">Owner</th>
-                  <th className="py-1.5 font-medium">Status</th>
+                  <th className="py-1.5 font-medium">Value</th>
+                  <th className="w-36 py-1.5 font-medium">Owner</th>
+                  <th className="w-24 py-1.5 font-medium">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {missing.map((field) => {
                   const empOwned = EMPLOYEE_OWNED.has(field)
+                  const demo = employee.demoValues?.[field]
+                  const error = fieldErrors[field]
                   return (
-                    <tr key={field} className="border-t border-border">
+                    <tr key={field} className="border-t border-border align-top">
                       <td className="py-1.5 font-medium text-text-primary">{field}</td>
+                      <td className="py-1.5 pr-3">
+                        <input
+                          aria-label={field}
+                          className={[
+                            'h-8 w-full rounded border bg-surface px-2 text-[13px] text-text-primary placeholder:text-text-muted focus:outline-none',
+                            error
+                              ? 'border-status-danger-border focus:border-status-danger-text'
+                              : 'border-border focus:border-text-primary',
+                          ].join(' ')}
+                          value={fieldValues[field] || ''}
+                          placeholder={demo || `Add ${field}`}
+                          aria-invalid={Boolean(error)}
+                          onChange={(e) => {
+                            const value = e.target.value
+                            setFieldValues((current) => ({ ...current, [field]: value }))
+                            setFieldErrors((current) => {
+                              if (!current[field]) return current
+                              const next = { ...current }
+                              delete next[field]
+                              return next
+                            })
+                          }}
+                        />
+                        {error ? (
+                          <p className="mt-0.5 text-[11px] text-status-danger-text">{error}</p>
+                        ) : null}
+                        {demo ? (
+                          <button
+                            type="button"
+                            className="mt-0.5 text-[11px] text-brand hover:underline"
+                            onClick={() =>
+                              setFieldValues((current) => ({ ...current, [field]: demo }))
+                            }
+                          >
+                            Use demo value
+                          </button>
+                        ) : null}
+                      </td>
                       <td className="py-1.5 text-text-secondary">
                         {empOwned ? employee.name : 'HR admin'}
                       </td>
@@ -538,6 +663,9 @@ export function PayrollPanel({ employee }: Props) {
                 onClick={onRemindEmployee}
               >
                 {missingIssue?.reminderSentOn ? 'Resend reminder' : 'Remind employee'}
+              </Button>
+              <Button variant="secondary" disabled={busy} onClick={() => void onSaveMissing()}>
+                {busy ? 'Saving…' : 'Save details'}
               </Button>
               <Button
                 variant="secondary"

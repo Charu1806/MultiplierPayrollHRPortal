@@ -16,6 +16,7 @@ from domain.calendar_rules import (  # noqa: E402
     REVIEW_OPEN,
     active_cycle_key,
     cycle_dates,
+    cycle_for_new_input,
     next_cycle_dates,
     parse_date,
     review_bounds,
@@ -23,7 +24,6 @@ from domain.calendar_rules import (  # noqa: E402
     review_window_state,
     short_date,
     show_october_closed_review,
-    unsigned_outcome_rows,
 )
 from domain.config import company_config, cycle_config  # noqa: E402
 
@@ -90,13 +90,8 @@ def attach_llm_decisions(lines: List[Dict[str, Any]], *, force: bool = False) ->
     return lines
 
 
-def _outcome_lookup() -> Dict[str, Dict[str, Any]]:
-    return {row["employeeId"]: row for row in unsigned_outcome_rows()}
-
-
-def _unapplied(store: Store, lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _unapplied(store: Store, lines: List[Dict[str, Any]], as_of: str) -> List[Dict[str, Any]]:
     """Unapproved need-check lines → paid at September; arrears or recovery in November."""
-    outcomes = _outcome_lookup()
     next_c = next_cycle_dates("2026-10-23")
     next_open = short_date(next_c["reviewOpen"])
     next_close = short_date(next_c["reviewClose"])
@@ -106,24 +101,19 @@ def _unapplied(store: Store, lines: List[Dict[str, Any]]) -> List[Dict[str, Any]
             continue
         eid = line.get("employeeId")
         emp = store.get_employee(eid) if eid else None
-        currency = (emp or {}).get("currency") or "£"
-        sept = rules_svc.fmt_money(currency, emp["september_pay"]) if emp else None
-        row = outcomes.get(eid or "")
-        kind = (row or {}).get("kind") or "arrears"
-        if row and kind == "arrears":
-            amt = rules_svc.fmt_money(currency, row["amount"])
-            note = (
-                f"paid {sept} in October · {amt} "
-                f"added as arrears in November review"
-            )
-            banner = f"{line['employeeName']} — {note}"
-        elif row and kind == "recovery":
-            amt = rules_svc.fmt_money(currency, row["amount"])
-            note = f"paid {sept} in October · {amt} to be recovered in November review"
-            banner = f"{line['employeeName']} — {note}"
+        if not emp:
+            continue
+        row = _live_carry_row(store, emp, as_of, pay_month="October")
+        if not row:
+            continue
+        currency = emp.get("currency") or "£"
+        sept = rules_svc.fmt_money(currency, emp["september_pay"])
+        kind = row["kind"]
+        amt = rules_svc.fmt_money(currency, row["amount"])
+        if kind == "arrears":
+            note = f"paid {sept} in October · {amt} added as arrears in November review"
         else:
-            note = f"Paid {sept} in October; change moves to November as arrears" if sept else "Moved to November"
-            banner = f"{line['employeeName']} — {note}"
+            note = f"paid {sept} in October · {amt} to be recovered in November review"
         out.append(
             {
                 "id": eid,
@@ -133,11 +123,200 @@ def _unapplied(store: Store, lines: List[Dict[str, Any]]) -> List[Dict[str, Any]
                 "changeSummary": line["changeSummary"],
                 "kind": kind,
                 "note": note,
-                "banner": banner,
+                "banner": f"{line['employeeName']} — {note}",
                 "nextReviewLabel": f"{next_open}–{next_close}",
             }
         )
     return out
+
+
+def _month_name(label: str) -> str:
+    parts = (label or "").split()
+    return parts[0] if parts else "the next cycle"
+
+
+def _carry_item(
+    emp: Dict[str, Any],
+    row: Dict[str, Any],
+    next_cycle: str,
+    *,
+    tense: str,
+) -> Dict[str, Any]:
+    currency = emp.get("currency") or "£"
+    kind = row.get("kind") or "arrears"
+    paid = row.get("octoberPaid")
+    if paid is None:
+        paid = emp.get("september_pay") or 0
+    previous = rules_svc.fmt_money(currency, float(paid))
+    difference = rules_svc.fmt_money(currency, float(row["amount"]))
+    kind_label = "arrear" if kind == "arrears" else "deductible"
+    article = "an" if kind_label == "arrear" else "a"
+    if tense == "settled":
+        note = (
+            f"Previous pay {previous} was deposited. "
+            f"{difference} is in this cycle as {article} {kind_label}."
+        )
+    elif tense == "closed":
+        note = (
+            f"Not approved in time. Previous pay {previous} is deposited. "
+            f"{difference} carries to {next_cycle} as {article} {kind_label}."
+        )
+    else:
+        note = (
+            f"If not approved in time, previous pay {previous} is deposited. "
+            f"{difference} carries to {next_cycle} as {article} {kind_label}."
+        )
+    return {
+        "employeeId": emp["id"],
+        "name": emp["name"],
+        "kind": kind,
+        "kindLabel": kind_label,
+        "previousPay": previous,
+        "difference": difference,
+        "nextCycle": next_cycle,
+        "note": note,
+    }
+
+
+def _live_carry_row(
+    store: Store,
+    emp: Dict[str, Any],
+    as_of: str,
+    *,
+    pay_month: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Difference between last approved pay and this cycle, from the employee record."""
+    month = pay_month or (_month_name(cycle_dates(as_of).get("label") or "") or "October")
+    struct = rules_svc.salary_structure(store, emp, as_of, cycle=month)
+    payable = (
+        float(emp.get("base_salary") or 0)
+        + float(emp.get("allowances") or 0)
+        + float(struct.one_time_total)
+        - float(struct.deductions)
+    )
+    sept = float(emp.get("september_pay") or 0)
+    diff = payable - sept
+    if abs(diff) < 0.5:
+        return None
+    if diff > 0:
+        return {"kind": "arrears", "amount": diff, "octoberPaid": sept}
+    return {"kind": "recovery", "amount": -diff, "octoberPaid": sept}
+
+
+def _annotate_unapproved_carry(
+    store: Store,
+    lines: List[Dict[str, Any]],
+    next_cycle: str,
+    tense: str,
+    as_of: str,
+) -> List[Dict[str, Any]]:
+    """Unapproved lines: previous pay is deposited; the gap is next cycle's arrear or deductible."""
+    items: List[Dict[str, Any]] = []
+    for line in lines:
+        if line.get("approved") or (line.get("origin") or "") == "october_carry":
+            continue
+        eid = line.get("employeeId") or ""
+        emp = store.get_employee(eid) if eid else None
+        if not emp:
+            continue
+        row = _live_carry_row(store, emp, as_of)
+        if not row:
+            continue
+        item = _carry_item(emp, row, next_cycle, tense=tense)
+        line["carryNote"] = item["note"]
+        items.append(item)
+    return items
+
+
+def _settled_carry_items(store: Store, cycle_id: str, as_of: str) -> List[Dict[str, Any]]:
+    items: List[Dict[str, Any]] = []
+    for line in store.review_lines(cycle_id):
+        if (line.get("origin") or "") != "october_carry":
+            continue
+        emp = store.get_employee(line.get("employee_id") or "")
+        if not emp:
+            continue
+        row = _live_carry_row(store, emp, as_of, pay_month="October")
+        if not row:
+            continue
+        items.append(_carry_item(emp, row, "this cycle", tense="settled"))
+    return items
+
+
+def _carry_block(
+    store: Store,
+    cycle: Dict[str, Any],
+    lines: List[Dict[str, Any]],
+    *,
+    november_view: bool,
+    window: str,
+    next_month: str,
+    as_of: str,
+) -> Optional[Dict[str, Any]]:
+    if november_view:
+        items = _settled_carry_items(store, cycle["id"], as_of)
+        if items:
+            return {
+                "headline": (
+                    "October was not approved in time, so the previous pay was deposited. "
+                    "These differences are in this cycle as an arrear or a deductible."
+                ),
+                "nextCycle": next_month,
+                "settled": True,
+                "items": items,
+            }
+        tracked = [
+            line
+            for line in _october_source_lines(store, cycle["id"])
+            if _line_has_october_difference(store, line, as_of)
+        ]
+        if tracked and all(
+            _october_change_approved(store, cycle["id"], line.get("employee_id") or "", as_of)
+            for line in tracked
+        ):
+            return {
+                "headline": (
+                    "October changes were approved in time, so the new amounts were paid. "
+                    "No arrears or deductibles carried into this cycle."
+                ),
+                "nextCycle": next_month,
+                "settled": True,
+                "items": [],
+            }
+        return None
+    if window == "before":
+        return None
+    tense = "open" if window == "open" else "closed"
+    items = _annotate_unapproved_carry(store, lines, next_month, tense, as_of)
+    if not items:
+        if lines and all(line.get("approved") for line in lines):
+            return {
+                "headline": (
+                    f"If a line is not manually approved in time, the previous pay is deposited. "
+                    f"The difference carries to {next_month} as an arrear or a deductible. "
+                    f"Every line is approved, so nothing carries."
+                ),
+                "nextCycle": next_month,
+                "settled": False,
+                "items": [],
+            }
+        return None
+    if tense == "open":
+        headline = (
+            f"If a line is not manually approved in time, the previous pay is deposited. "
+            f"The difference carries to {next_month} as an arrear or a deductible."
+        )
+    else:
+        headline = (
+            f"This review was not approved in time. The previous pay is deposited. "
+            f"The difference carries to {next_month} as an arrear or a deductible."
+        )
+    return {
+        "headline": headline,
+        "nextCycle": next_month,
+        "settled": False,
+        "items": items,
+    }
 
 
 def _assert_window_open(as_of: str) -> None:
@@ -145,17 +324,91 @@ def _assert_window_open(as_of: str) -> None:
         raise PermissionError("Review window is not open")
 
 
+def _october_source_lines(store: Store, cycle_id: str) -> List[Dict[str, Any]]:
+    """October review rows. Carry rows and later-cycle rows are not sources."""
+    seen = set()
+    out: List[Dict[str, Any]] = []
+    for row in store.review_lines(cycle_id):
+        origin = row.get("origin") or ""
+        if origin in ("october_carry", "exit") or str(row["id"]).startswith("rev_nov_"):
+            continue
+        eid = row.get("employee_id")
+        if not eid or eid in seen:
+            continue
+        seen.add(eid)
+        out.append(row)
+    return out
+
+
+def _line_has_october_difference(store: Store, line: Dict[str, Any], as_of: str) -> bool:
+    emp = store.get_employee(line.get("employee_id") or "")
+    if not emp:
+        return False
+    return _live_carry_row(store, emp, as_of, pay_month="October") is not None
+
+
 def _carry_line_id(kind: str, employee_id: str) -> str:
     return f"rev_nov_{kind}_{employee_id}"
 
 
-def _november_visible_rows(raw_lines: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    return [
-        r
-        for r in raw_lines
-        if (r.get("origin") or "") in ("edited", "november", "october_carry")
-        or (r.get("created_on") or "") >= "2026-11-01"
-    ]
+def _november_visible_rows(raw_lines: List[Dict[str, Any]], as_of: str) -> List[Dict[str, Any]]:
+    """Lines that belong to the cycle being reviewed, not the month before or after."""
+    cd = cycle_dates(as_of)
+    start = str(cd.get("open") or "2026-11-01")
+    end = str(next_cycle_dates(as_of).get("open") or "9999-12-31")
+    visible = []
+    for row in raw_lines:
+        origin = row.get("origin") or ""
+        created = row.get("created_on") or ""
+        if origin not in ("edited", "november", "october_carry", "exit") and created < "2026-11-01":
+            continue
+        if created and not (start <= created < end):
+            continue
+        visible.append(row)
+    return visible
+
+
+def _review_headline_counts(
+    store: Store,
+    customer_id: str,
+    as_of: str,
+    lines: List[Dict[str, Any]],
+    rollup: Dict[str, int],
+) -> Dict[str, int]:
+    """Cards follow the employees on this review, not a fixed seed total.
+
+    Auto-matched employees stay in Matched. Approving a line moves that person
+    from Need your check into Matched. A changed flag with no pay difference and
+    no review line is not counted.
+    """
+    emps = store.list_employees(customer_id, as_of=as_of)
+    by_id = {e["id"]: e for e in emps}
+    line_ids = {l.get("employeeId") for l in lines if l.get("employeeId")}
+    approved_ids = {l.get("employeeId") for l in lines if l.get("approved") and l.get("employeeId")}
+    changed_ids = set()
+    for emp in emps:
+        eid = emp["id"]
+        if eid in line_ids or emp.get("matched_source"):
+            changed_ids.add(eid)
+            continue
+        if not emp.get("changed_this_cycle"):
+            continue
+        sept = float(emp.get("september_pay") or 0)
+        base = float(emp.get("base_salary") or 0)
+        if abs(base - sept) > 0.5 or int(emp.get("unpaid_leave_days") or 0) > 0:
+            changed_ids.add(eid)
+    matched = 0
+    for eid in changed_ids:
+        emp = by_id.get(eid) or {}
+        if eid in approved_ids or emp.get("matched_source"):
+            matched += 1
+    changed = len(changed_ids)
+    return {
+        "changedLines": changed,
+        "matchedLines": matched,
+        "needsHumanCheck": changed - matched,
+        "employeeCount": rollup["employeeCount"],
+    }
 
 
 def _line_summary_counts(lines: List[Dict[str, Any]], rollup: Dict[str, int]) -> Dict[str, int]:
@@ -175,7 +428,6 @@ def _line_summary_counts(lines: List[Dict[str, Any]], rollup: Dict[str, int]) ->
 
 
 def _cleanup_november_review_lines(store: Store, cycle: Dict[str, Any], as_of: str) -> None:
-    outcomes = {row["employeeId"]: row for row in unsigned_outcome_rows()}
     cut = parse_date(cycle_dates(as_of)["inputFinalisation"])
     nxt_open = str(next_cycle_dates(as_of).get("open") or "2026-12-01")
     for r in store.review_lines(cycle["id"], as_of=as_of):
@@ -187,11 +439,13 @@ def _cleanup_november_review_lines(store: Store, cycle: Dict[str, Any], as_of: s
         origin = r.get("origin") or ""
         created = r.get("created_on")
         summary = r.get("change_summary") or ""
-        row = outcomes.get(eid or "")
-        # Drop duplicate OTP review lines that mirror an unsigned arrears carry for same emp+amount
-        if row and row.get("kind") == "arrears" and origin in ("edited", "november"):
+        emp = store.get_employee(eid) if eid else None
+        live = _live_carry_row(store, emp, as_of, pay_month="October") if emp else None
+        # Drop a later bonus line that repeats the October arrears amount.
+        if live and live.get("kind") == "arrears" and origin in ("edited", "november"):
             try:
-                if abs(float(row["amount"])) > 0 and str(int(row["amount"])) in summary.replace(",", ""):
+                amount_txt = str(int(round(float(live["amount"]))))
+                if amount_txt and amount_txt in summary.replace(",", ""):
                     if "Bonus" in summary or "one-time" in summary.lower() or "One-time" in summary:
                         store.delete_review_line(lid)
                         continue
@@ -201,19 +455,43 @@ def _cleanup_november_review_lines(store: Store, cycle: Dict[str, Any], as_of: s
             store.update_review_line(lid, created_on=nxt_open, origin="november")
 
 
-def _persist_november_carry_lines(store: Store, cycle: Dict[str, Any], as_of: str) -> None:
-    if bool(cycle.get("approved")):
-        return
-    created_on = max(as_of, "2026-11-01")
-    for row in unsigned_outcome_rows():
-        eid = row["employeeId"]
-        emp = store.get_employee(eid)
-        if not emp:
+def _october_change_approved(store: Store, cycle_id: str, employee_id: str, as_of: str) -> bool:
+    """True when the October line was manually approved, so nothing carries forward."""
+    for row in store.review_lines(cycle_id):
+        if row.get("employee_id") != employee_id:
             continue
+        origin = row.get("origin") or ""
+        if origin == "october_carry" or str(row["id"]).startswith("rev_nov_"):
+            continue
+        if store.line_approval(row["id"], as_of):
+            return True
+    return False
+
+
+def _persist_november_carry_lines(store: Store, cycle: Dict[str, Any], as_of: str) -> None:
+    """Next cycle opens with last cycle's unapproved gaps: arrears or deductibles."""
+    created_on = "2026-11-01"
+    signed_off = bool(cycle.get("approved"))
+    kept = set()
+    for line in _october_source_lines(store, cycle["id"]):
+        eid = line.get("employee_id") or ""
+        emp = store.get_employee(eid) if eid else None
+        live = _live_carry_row(store, emp, as_of, pay_month="October") if emp else None
+        approved = signed_off or _october_change_approved(store, cycle["id"], eid, as_of)
+        if not emp or not live or approved:
+            for kind in ("arrears", "recovery"):
+                stale = _carry_line_id(kind, eid)
+                if store.get_review_line(stale):
+                    store.delete_review_line(stale)
+            continue
+        kind = live["kind"]
+        other = "recovery" if kind == "arrears" else "arrears"
+        other_id = _carry_line_id(other, eid)
+        if store.get_review_line(other_id):
+            store.delete_review_line(other_id)
         currency = emp.get("currency") or "£"
-        amt = rules_svc.fmt_money(currency, row["amount"])
-        kind = row["kind"]
-        label = "Arrears" if kind == "arrears" else "Recovery"
+        amt = rules_svc.fmt_money(currency, live["amount"])
+        label = "Arrears" if kind == "arrears" else "Deductible"
         sign = "+" if kind == "arrears" else "–"
         store.upsert_review_line(
             {
@@ -224,12 +502,16 @@ def _persist_november_carry_lines(store: Store, cycle: Dict[str, Any], as_of: st
                 "country": emp["country"],
                 "change_summary": f"{label} {sign}{amt}",
                 "why_flagged": "From October review (not signed off)",
-                "matching_source": row.get("label") or label,
+                "matching_source": label,
                 "origin": "october_carry",
                 "created_on": created_on,
                 "requires_employee_notified": kind == "recovery",
             }
         )
+        kept.add(eid)
+    for row in store.review_lines(cycle["id"]):
+        if (row.get("origin") or "") == "october_carry" and row.get("employee_id") not in kept:
+            store.delete_review_line(row["id"])
 
 
 def _sync_november_review(store: Store, cycle: Dict[str, Any], as_of: str) -> None:
@@ -237,8 +519,56 @@ def _sync_november_review(store: Store, cycle: Dict[str, Any], as_of: str) -> No
         return
     store.ensure_schema()
     _cleanup_november_review_lines(store, cycle, as_of)
-    if parse_date(as_of) >= parse_date(NOV.get("calculation") or "2026-11-16"):
-        _persist_november_carry_lines(store, cycle, as_of)
+    # Cycle reset is Nov 1, not the later calculation date — differences show as soon as November opens.
+    _persist_november_carry_lines(store, cycle, as_of)
+
+
+def exit_review_line_id(cycle_key: str, employee_id: str) -> str:
+    return f"rev_{cycle_key}_exit_{employee_id}"
+
+
+def upsert_exit_review_line(
+    store: Store,
+    emp: Dict[str, Any],
+    exit_row: Dict[str, Any],
+    as_of: str,
+) -> None:
+    """Review row for an exit: prorated days only, and next month when the exit is after lock-in."""
+    cycle = store.get_current_cycle(emp["customer_id"])
+    if not cycle:
+        return
+    cd = cycle_dates(as_of)
+    plan = rules_svc.exit_pay_plan(emp, exit_row)
+    net = rules_svc.fmt_money(emp["currency"], plan["fnf"]["net"])
+    days = plan["daysWorked"]
+    if plan["onHold"]:
+        why = f"On hold for {plan['heldMonth']}. Prorated pay will be paid in {plan['payMonth']}."
+    else:
+        why = f"Prorated pay for {days} days will be paid in {plan['payMonth']}."
+    store.upsert_review_line(
+        {
+            "id": exit_review_line_id(cd["key"], emp["id"]),
+            "cycle_id": cycle["id"],
+            "employee_id": emp["id"],
+            "employee_name": emp["name"],
+            "country": emp["country"],
+            "change_summary": f"Exit · prorated {days} days · {net}",
+            "why_flagged": why,
+            "matching_source": f"Exit · last day {exit_row.get('last_working_day')}",
+            "origin": "exit",
+            "created_on": exit_row.get("recorded_on") or as_of,
+        }
+    )
+
+
+def delete_exit_review_line(store: Store, emp: Dict[str, Any], as_of: str) -> None:
+    cycle = store.get_current_cycle(emp["customer_id"])
+    if not cycle:
+        return
+    cd = cycle_dates(as_of)
+    line_id = exit_review_line_id(cd["key"], emp["id"])
+    store.delete_line_approvals(line_id)
+    store.delete_review_line(line_id)
 
 
 def calculate_and_build_review(store: Store, customer_id: str, as_of: str) -> None:
@@ -247,25 +577,45 @@ def calculate_and_build_review(store: Store, customer_id: str, as_of: str) -> No
     if not cycle:
         return
     cd = cycle_dates(as_of)
-    calc = cd.get("calculation") or cd["inputFinalisation"]
-    if parse_date(as_of) < parse_date(calc):
+    opened = cd.get("open") or (cd["inputFinalisation"][:8] + "01")
+    if parse_date(as_of) < parse_date(opened):
         return
     store.ensure_schema()
     if cd["key"] == "november":
         _sync_november_review(store, cycle, as_of)
+    carried = set()
+    for line in _october_source_lines(store, cycle["id"]):
+        eid = line.get("employee_id") or ""
+        if not eid:
+            continue
+        if (
+            _october_change_approved(store, cycle["id"], eid, as_of)
+            or store.get_review_line(_carry_line_id("arrears", eid))
+            or store.get_review_line(_carry_line_id("recovery", eid))
+        ):
+            carried.add(eid)
     emps = store.list_employees(customer_id, as_of=as_of)
     for emp in emps:
+        exit_row = store.get_exit(emp["id"], as_of)
+        if exit_row:
+            upsert_exit_review_line(store, emp, exit_row, as_of)
+            continue
+        # Already carried forward, or approved in October so nothing should carry or be rebuilt.
+        if emp["id"] in carried:
+            continue
         otps = store.one_time_payments(emp["id"], as_of)
-        # Only OTPs recorded on/after this cycle's open (or always for changed)
+        cycle_open = str(cd.get("open") or cd["inputFinalisation"][:8] + "01")
         cycle_otps = [
             p
             for p in otps
-            if (p.get("recorded_on") or "") >= (cd.get("open") or cd["inputFinalisation"][:8] + "01")
+            if p.get("recorded_on") and cycle_for_new_input(p["recorded_on"])["key"] == cd["key"]
         ]
-        if not emp.get("changed_this_cycle") and not cycle_otps and not emp.get("edited_by_you"):
-            continue
         if cycle_otps:
             last = cycle_otps[-1]
+            recorded = str(last.get("recorded_on") or cycle_open)
+            # A bonus saved after the previous cutoff is dated on this cycle's open,
+            # so it shows here and not on the locked review.
+            visible_on = recorded if recorded >= cycle_open else cycle_open
             lid = f"rev_{cd['key']}_otp_{emp['id']}_{last.get('id') or last.get('type')}"
             store.upsert_review_line(
                 {
@@ -278,18 +628,26 @@ def calculate_and_build_review(store: Store, customer_id: str, as_of: str) -> No
                     "why_flagged": "One-time payment – needs approval",
                     "matching_source": last.get("document_name") or "No supporting document",
                     "origin": "november" if cd["key"] != "october" else "edited",
-                    "created_on": last.get("recorded_on") or as_of,
+                    "created_on": visible_on,
                 }
             )
-        elif emp.get("edited_by_you") or emp.get("changed_this_cycle"):
+            continue
+        existing = store.current_review_line(cycle["id"], emp["id"])
+        if existing:
+            # Already scheduled. Opening this review (after the 15th) must not push it forward.
+            continue
+        added = emp.get("date_added") or ""
+        if added and cycle_for_new_input(added)["key"] == cd["key"]:
             ensure_edited_line(
                 store,
                 emp,
-                as_of=as_of,
-                change_summary=f"Change in {cd['label']}",
-                why_flagged="Edited by you – needs approval",
-                matching_source="Edited by HR admin",
+                as_of=cycle_open,
+                change_summary=f"New employee · {cd['label']}",
+                why_flagged="New employee – needs approval",
+                matching_source="Added by HR admin",
             )
+    if cd["key"] == "november":
+        _persist_november_carry_lines(store, cycle, as_of)
 
 
 def get_review(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
@@ -315,11 +673,13 @@ def get_review(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
     not_in = rules_svc.not_in_run(store, customer_id, as_of) if window == "open" else {"count": 0, "employees": [], "message": "", "href": "/payroll/actions"}
     counts = calendar_svc.cycle_counts(store, customer_id, as_of)
     november_view = not october_closed_view and active_cycle_key(as_of) == "november"
+    next_month = _month_name(next_c.get("label") or "")
+    # Differences from an unsigned October review land as soon as November opens, including before Nov 17.
+    if november_view:
+        _sync_november_review(store, cycle, as_of)
     # October review lines come from seed; rebuild only for November+ cycles
     if window != "before" and not october_closed_view and active_cycle_key(as_of) != "october":
         calculate_and_build_review(store, customer_id, as_of)
-    elif november_view and window != "before":
-        _sync_november_review(store, cycle, as_of)
 
     base = {
         "windowState": window,
@@ -339,6 +699,7 @@ def get_review(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
         "nextReviewClose": next_c["reviewClose"],
         "nextReviewLabel": f"{next_open}–{next_close}",
         "badgeCount": 0,
+        "ifUnapproved": None,
     }
 
     if window == "before":
@@ -361,24 +722,47 @@ def get_review(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
             "signedOff": False,
             "signoff": None,
             "approved": False,
+            "ifUnapproved": _carry_block(
+                store,
+                cycle,
+                [],
+                november_view=november_view,
+                window=window,
+                next_month=next_month,
+                as_of=as_of,
+            ),
         }
 
     raw_lines = store.review_lines(cycle["id"], as_of=as_of)
     if october_closed_view or active_cycle_key(as_of) == "october":
         lines = [_line_dto(store, r, as_of) for r in raw_lines]
     else:
-        lines = [_line_dto(store, r, as_of) for r in _november_visible_rows(raw_lines)]
+        lines = [_line_dto(store, r, as_of) for r in _november_visible_rows(raw_lines, as_of)]
 
     # LLM decides approve vs hold for each line (replaces hard-coded match heuristics in the UI).
     if window == "open":
         attach_llm_decisions(lines)
 
-    line_counts = _line_summary_counts(lines, counts) if november_view else counts
+    if_unapproved = _carry_block(
+        store,
+        cycle,
+        lines,
+        november_view=november_view,
+        window=window,
+        next_month=next_month,
+        as_of=as_of,
+    )
+
+    line_counts = (
+        _line_summary_counts(lines, counts)
+        if november_view
+        else _review_headline_counts(store, customer_id, as_of, lines, counts)
+    )
     remaining = sum(1 for l in lines if not l["approved"])
     badge = remaining if window == "open" and not active else 0
 
     if window == "closed":
-        unapplied = [] if active else _unapplied(store, lines)
+        unapplied = [] if active else _unapplied(store, lines, as_of)
         arrears_n = sum(1 for u in unapplied if u.get("kind") == "arrears")
         recovery_n = sum(1 for u in unapplied if u.get("kind") == "recovery")
         emp_count = counts["employeeCount"]
@@ -439,6 +823,7 @@ def get_review(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
                 else None
             ),
             "approved": active,
+            "ifUnapproved": if_unapproved,
         }
 
     left = review_countdown(as_of)
@@ -475,6 +860,7 @@ def get_review(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
             else None
         ),
         "approved": active,
+        "ifUnapproved": if_unapproved,
     }
 
 
@@ -500,6 +886,9 @@ def unapprove_line(store: Store, customer_id: str, line_id: str, as_of: str, act
     if not store.line_approval(line_id, as_of):
         return get_review(store, customer_id, as_of)
     store.revoke_line_approval(line_id, revoked_on=as_of, reason=f"Undo by {actor}")
+    emp = store.get_employee(line.get("employee_id") or "")
+    if emp and emp.get("matched_source") == "HR confirmation":
+        store.update_employee_fields(emp["id"], matched_source=None)
     return get_review(store, customer_id, as_of)
 
 
@@ -511,18 +900,34 @@ def ensure_edited_line(
     change_summary: str,
     why_flagged: Optional[str] = None,
     matching_source: Optional[str] = None,
+    keep_visible: bool = False,
 ) -> None:
     if review_window_state(as_of) == "closed":
         raise PermissionError("Review window is closed — edits are read-only")
     cycle = store.get_current_cycle(emp["customer_id"])
     assert cycle
-    existing = store.review_line_for_employee(cycle["id"], emp["id"])
+    existing = store.current_review_line(cycle["id"], emp["id"])
     why = why_flagged or "Edited by you – needs approval"
     source = matching_source or why
     after_cutoff = rules_svc.input_finalisation_passed(as_of)
     created_on = rules_svc.review_line_created_on(as_of)
     origin = "november" if after_cutoff else "edited"
-    if existing:
+    if existing and keep_visible:
+        # A salary confirmed from the employee page stays on the open review and is approved.
+        kept_origin = existing.get("origin") or "seed"
+        kept_created = existing.get("created_on")
+        if kept_origin == "november" or (kept_created and kept_created > as_of):
+            kept_origin = "seed"
+            kept_created = None
+        store.update_review_line(
+            existing["id"],
+            change_summary=change_summary,
+            why_flagged=why,
+            matching_source=source,
+            origin=kept_origin,
+            created_on=kept_created,
+        )
+    elif existing:
         store.update_review_line(
             existing["id"],
             change_summary=change_summary,
@@ -650,8 +1055,6 @@ def patch_employee(
     customer_id: str,
     confirm_ai: bool = False,
 ) -> Dict[str, Any]:
-    if review_window_state(as_of) == "closed":
-        raise PermissionError("Review window is closed — edits are read-only")
     emp = store.get_employee(employee_id)
     if not emp or emp["customer_id"] != customer_id:
         raise LookupError("employee_not_found")
@@ -676,49 +1079,26 @@ def patch_employee(
     if check:
         raise AiCheckRequired(check)
 
-    updates = {"base_salary": new_base, "allowances": allowances, "unpaid_leave_days": unpaid, "edited_by_you": 1, "changed_this_cycle": 1}
+    from server.services.clock import stamp
+
+    hr_fields = {
+        "base_salary": new_base,
+        "allowances": allowances,
+        "unpaid_leave_days": unpaid,
+        "updated_at": stamp(as_of),
+        "updated_by": company_config().get("admin", {}).get("name") or "HR admin",
+    }
     if body.get("role"):
-        updates["role"] = body["role"]
+        hr_fields["role"] = body["role"]
     if body.get("managerName") is not None:
-        updates["manager_name"] = body["managerName"]
+        hr_fields["manager_name"] = body["managerName"]
+    store.upsert_hr_employee(employee_id, **hr_fields)
     if body.get("workEmail"):
-        updates["work_email"] = body["workEmail"]
-    store.update_employee_fields(employee_id, **updates)
-    store.log_change(employee_id, "base_salary", emp["base_salary"], new_base, source="Edited by HR admin", as_of=as_of)
-
-    cycle = store.get_current_cycle(customer_id)
-    existing_line = store.review_line_for_employee(cycle["id"], employee_id) if cycle else None
-    had_review_line = existing_line is not None
-    signoff = store.active_signoff(cycle["id"], as_of) if cycle else None
-    signoff_reopened = bool(
-        signoff and signoff.get("reopened_on") and (not as_of or signoff["reopened_on"] <= as_of)
-    )
-    payroll_was_approved = bool(
-        (cycle and cycle.get("approved")) or (signoff and not signoff_reopened)
-    )
-    admin_name = company_config().get("admin", {}).get("name") or "HR admin"
-
-    change = f"{rules_svc.fmt_money(emp['currency'], emp['september_pay'])} → {rules_svc.fmt_money(emp['currency'], salary.net)}"
-    ensure_edited_line(store, {**emp, **{"base_salary": new_base}}, as_of=as_of, change_summary=change)
-    if payroll_was_approved and cycle:
-        store.reopen_signoff(cycle["id"], reopened_on=as_of, note="1 line changed since approval")
-        store.set_cycle_approved(cycle["id"], 0)
-    rules_svc.after_input_change(store, cycle, employee_id, as_of=as_of, what="salary edited")
-    if had_review_line and cycle:
-        line = store.review_line_for_employee(cycle["id"], employee_id)
-        if line:
-            store.update_review_line(
-                line["id"],
-                change_summary=f"Approved · edited by {admin_name}",
-            )
-            store.approve_line(line["id"], approved_on=as_of, approved_by=admin_name)
-
-    # Generic: base restored to last approved + OTP present → resolve pay_confirmation
-    if abs(new_base - float(emp["september_pay"])) < 0.5 and store.one_time_payments(emp["id"], as_of):
-        from server.services.inputs import _maybe_resolve_pay_confirmation
-
-        _maybe_resolve_pay_confirmation(store, {**emp, "base_salary": new_base}, as_of)
+        store.update_employee_fields(employee_id, work_email=body["workEmail"])
 
     from server.services.validation import get_employee_detail
 
-    return get_employee_detail(store, employee_id, as_of, customer_id)
+    detail = get_employee_detail(store, employee_id, as_of, customer_id)
+    detail["savedIn"] = "hr"
+    detail["saveMessage"] = "Saved in HR tool"
+    return detail

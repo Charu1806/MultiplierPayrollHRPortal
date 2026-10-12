@@ -218,6 +218,12 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS notification_reads (
+  notification_id TEXT PRIMARY KEY,
+  read_on        TEXT NOT NULL,
+  read_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS notification_actions (
   id                INTEGER PRIMARY KEY AUTOINCREMENT,
   notification_id   TEXT NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
@@ -279,4 +285,51 @@ CREATE TABLE IF NOT EXISTS change_log (
 CREATE TABLE IF NOT EXISTS meta (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
+);
+
+-- HR source (Workday). Payroll snapshot is `employees`. Sync copies HR → snapshot.
+CREATE TABLE IF NOT EXISTS hr_employees (
+  employee_id        TEXT PRIMARY KEY REFERENCES employees(id) ON DELETE CASCADE,
+  base_salary        REAL NOT NULL,
+  allowances         REAL NOT NULL DEFAULT 0,
+  unpaid_leave_days  INTEGER NOT NULL DEFAULT 0,
+  role               TEXT,
+  manager_name       TEXT,
+  status             TEXT,
+  updated_at         TEXT NOT NULL,
+  updated_by         TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sync_runs (
+  id            TEXT PRIMARY KEY,
+  customer_id   TEXT NOT NULL,
+  cycle_id      TEXT NOT NULL,
+  trigger       TEXT NOT NULL,                 -- Manual | Final
+  status        TEXT NOT NULL,                 -- success | failed
+  synced_at     TEXT NOT NULL,
+  actor         TEXT NOT NULL,
+  added         INTEGER NOT NULL DEFAULT 0,
+  changed       INTEGER NOT NULL DEFAULT 0,
+  exited        INTEGER NOT NULL DEFAULT 0,
+  summary       TEXT,
+  error         TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sync_changes (
+  id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+  sync_id            TEXT NOT NULL,
+  employee_id        TEXT,
+  kind               TEXT NOT NULL,
+  summary            TEXT NOT NULL,
+  cycle_assignment   TEXT NOT NULL,            -- current | next
+  created_at         TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS funding_snapshots (
+  id            TEXT PRIMARY KEY,
+  customer_id   TEXT NOT NULL,
+  cycle_id      TEXT NOT NULL,
+  kind          TEXT NOT NULL,                 -- baseline | final
+  taken_at      TEXT NOT NULL,
+  payload_json  TEXT NOT NULL
 );

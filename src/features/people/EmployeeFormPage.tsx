@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { Button } from '@/components'
 import { MultiplierLogo } from '@/components/MultiplierLogo'
 import { clarityApi } from '@/api/clarityClient'
@@ -12,7 +12,6 @@ export function EmployeeFormPage() {
   const asOf = useAppStore((s) => s.asOf)
   const pushToast = useAppStore((s) => s.pushToast)
   const refreshAll = useAppStore((s) => s.refreshAll)
-  const navigate = useNavigate()
   const [name, setName] = useState('')
   const [fields, setFields] = useState<string[]>([])
   const [demo, setDemo] = useState<Record<string, string>>({})
@@ -20,6 +19,7 @@ export function EmployeeFormPage() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  const [doneMessage, setDoneMessage] = useState<string | null>(null)
 
   useEffect(() => {
     if (!token) return
@@ -41,10 +41,9 @@ export function EmployeeFormPage() {
     setBusy(true)
     try {
       const res = await clarityApi.submitForm(token, values, asOf)
-      pushToast(res.message)
+      setDoneMessage(res.message)
       setDone(true)
       await refreshAll()
-      navigate('/payroll/actions')
     } catch (err) {
       pushToast(err instanceof Error ? err.message : 'Could not submit')
     } finally {
@@ -73,15 +72,23 @@ export function EmployeeFormPage() {
             <MultiplierLogo size={16} />
             <span>Powered by Multiplier</span>
           </div>
-          <h1 className="mt-3 text-2xl font-normal text-text-primary">
-            Payroll details for Acme Tech
-          </h1>
-          <p className="mt-1 text-sm text-text-secondary">
-            {name ? `${name.split(' ')[0]}, add the fields below so we can pay you.` : 'Loading…'}
-          </p>
-          <p className="mt-2 text-xs text-text-muted">Please submit by the cycle deadline. This link is single-use.</p>
+          {done && doneMessage ? (
+            <h1 className="mt-3 text-2xl font-normal text-text-primary" data-testid="details-on-track">
+              {doneMessage}
+            </h1>
+          ) : (
+            <>
+              <h1 className="mt-3 text-2xl font-normal text-text-primary">
+                Payroll details for Acme Tech
+              </h1>
+              <p className="mt-1 text-sm text-text-secondary">
+                {name ? `${name.split(' ')[0]}, add the fields below so we can pay you.` : 'Loading…'}
+              </p>
+              <p className="mt-2 text-xs text-text-muted">Please submit by the cycle deadline. This link is single-use.</p>
+            </>
+          )}
         </div>
-        {fields.map((field) => (
+        {done ? null : fields.map((field) => (
           <div key={field} className="mt-3 rounded-lg bg-white p-6 shadow-sm">
             <label className="block text-sm font-medium text-text-primary">{field}</label>
             <input
@@ -110,6 +117,7 @@ export function EmployeeFormPage() {
             ) : null}
           </div>
         ))}
+        {done ? null : (
         <div className="mt-4 flex justify-end">
           <Button
             variant="primary"
@@ -119,6 +127,7 @@ export function EmployeeFormPage() {
             Submit
           </Button>
         </div>
+        )}
       </div>
     </div>
   )

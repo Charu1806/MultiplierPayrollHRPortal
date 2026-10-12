@@ -29,16 +29,13 @@ class TestPrototypeDateTable:
     @pytest.mark.parametrize(
         "d,stage,countdown",
         [
-            ("2026-10-12", "Input finalisation", "3 days left"),
-            ("2026-10-13", "Input finalisation", "2 days left"),
-            ("2026-10-14", "Input finalisation", "1 day left"),
-            ("2026-10-15", "Input finalisation", "Cutoff today"),
-            ("2026-10-16", CALC_STAGE, "Input finalisation closed"),
-            ("2026-10-17", "Review", "Input finalisation closed"),
-            ("2026-10-22", "Review", "Input finalisation closed"),
-            ("2026-10-23", "Funding", "Input finalisation closed"),
-            ("2026-10-25", "Submitted", "Input finalisation closed"),
-            ("2026-10-28", "Paid", "Input finalisation closed"),
+            ("2026-10-12", "Inputs & review", "10 days left"),
+            ("2026-10-21", "Inputs & review", "1 day left"),
+            ("2026-10-22", "Inputs & review", "Cutoff today"),
+            ("2026-10-23", "Funding", "Input deadline passed"),
+            ("2026-10-26", "Funding", "Input deadline passed"),
+            ("2026-10-27", "Submitted", "Input deadline passed"),
+            ("2026-10-29", "Paid", "Input deadline passed"),
         ],
     )
     def test_documented_prototype_dates(self, d, stage, countdown):
@@ -48,42 +45,41 @@ class TestPrototypeDateTable:
 
 class TestCountdownEdges:
     def test_due_today_on_cutoff(self):
-        assert countdown_text("2026-10-15") == "Cutoff today"
-        assert days_until_cutoff("2026-10-15") == 0
+        assert countdown_text(CUTOFF.isoformat()) == "Cutoff today"
+        assert days_until_cutoff(CUTOFF.isoformat()) == 0
 
     def test_day_before_cutoff(self):
-        assert countdown_text("2026-10-14") == "1 day left"
+        assert countdown_text("2026-10-21") == "1 day left"
 
     def test_closed_day_after_cutoff(self):
-        assert countdown_text("2026-10-16") == "Input finalisation closed"
+        assert countdown_text("2026-10-23") == "Input deadline passed"
 
     def test_far_before_cutoff(self):
-        assert countdown_text("2026-10-01") == "14 days left"
+        assert countdown_text("2026-10-01") == "21 days left"
 
     def test_far_after_still_closed(self):
-        assert countdown_text("2026-10-28") == "Input finalisation closed"
+        assert countdown_text("2026-10-28") == "Input deadline passed"
 
 
 class TestStageTransitions:
     def test_last_day_of_input_finalisation(self):
-        assert stage_for_date(CUTOFF) == "Input finalisation"
+        assert stage_for_date(CUTOFF) == "Inputs & review"
 
-    def test_calculation_day(self):
-        assert stage_for_date(CALCULATION) == CALC_STAGE
-        assert stage_for_date(date(2026, 10, 16)) == CALC_STAGE
+    def test_final_sync_shares_the_funding_day(self):
+        assert stage_for_date(CALCULATION) == "Funding"
+        assert stage_for_date(date(2026, 10, 16)) == "Inputs & review"
 
     def test_review_opens(self):
-        assert stage_for_date(REVIEW_OPEN) == "Review"
         assert review_window_state(REVIEW_OPEN) == "open"
 
     def test_review_on_close_day(self):
-        assert stage_for_date(APPROVAL) == "Review"
-        assert stage_for_date(REVIEW_CLOSE) == "Review"
+        assert stage_for_date(APPROVAL) == "Inputs & review"
+        assert stage_for_date(REVIEW_CLOSE) == "Inputs & review"
         assert review_window_state(REVIEW_CLOSE) == "open"
 
-    def test_before_review(self):
-        assert review_window_state("2026-10-14") == "before"
-        assert review_window_state("2026-10-16") == "before"
+    def test_review_open_through_the_deadline(self):
+        assert review_window_state("2026-10-14") == "open"
+        assert review_window_state("2026-10-16") == "open"
 
     def test_after_review(self):
         assert review_window_state("2026-10-23") == "closed"

@@ -11,6 +11,7 @@ import {
   whoLabel,
 } from '@/features/payroll/lib/labels'
 import { validateFieldValue, type FieldFormatSpec } from '@/lib/fieldValidation'
+import { personaCountry } from '@/features/persona'
 import { useAppStore } from '@/store'
 import type { IssueDto } from '@/api/types'
 import { ClarityApiError } from '@/api/clarityClient'
@@ -194,19 +195,34 @@ function IssueDetail({ issue }: { issue: IssueDto }) {
     })
   }
 
-  function openAddDetailsConfirm(fields: string[], resolution: string) {
-    const { ok, payload } = validatedFields(fields)
-    if (!ok) return
+  function saveFields(fields: Record<string, string>, resolution: string) {
+    const saving = Object.keys(fields).filter((f) => (fields[f] || '').trim())
+    const still = [...employeeFields, ...hrFields].filter((f) => !saving.includes(f))
+    const done = still.length === 0
+    const savedLabel = saving.join(', ')
+    const who = issue.employeeName || first
     askConfirm({
-      title: 'Confirm',
-      body: `Mark *${issue.title}${issue.employeeName ? ` – ${issue.employeeName}` : ''}* as resolved? ${first} will be included in this cycle's pay.`,
+      title: done ? 'Confirm' : 'Save details',
+      body: done
+        ? `Mark ${issue.title}${issue.employeeName ? ` – ${who}` : ''} as resolved? ${first} will be included in this cycle's pay.`
+        : `Save ${savedLabel} for ${who}. ${still.join(', ')} ${still.length === 1 ? 'is' : 'are'} still missing, so this issue stays open.`,
+      confirmLabel: done ? 'Confirm' : 'Save',
       onConfirm: async () => {
         setConfirmBusy(true)
         setConfirmError(null)
         try {
-          await resolveIssue(issue.id, { resolution, payload: { fields: payload }, actor: 'HR admin', asOf })
+          const result = await resolveIssue(issue.id, {
+            resolution,
+            payload: { fields },
+            actor: 'HR admin',
+            asOf,
+          })
           cancelConfirm()
-          pushToast(`Resolved: ${issue.title}`)
+          if (result.partial || !done) {
+            pushToast(`${savedLabel} saved. Still missing ${still.join(', ')}.`)
+          } else {
+            pushToast(`Resolved: ${issue.title}`)
+          }
         } catch (err) {
           const detail =
             err instanceof ClarityApiError
@@ -220,6 +236,12 @@ function IssueDetail({ issue }: { issue: IssueDto }) {
         }
       },
     })
+  }
+
+  function openAddDetailsConfirm(fields: string[], resolution: string) {
+    const { ok, payload } = validatedFields(fields)
+    if (!ok) return
+    saveFields(payload, resolution)
   }
 
   const isPayConfirm = issue.kind === 'pay_confirmation'
@@ -318,35 +340,12 @@ function IssueDetail({ issue }: { issue: IssueDto }) {
           </div>
         ) : isPayConfirm ? (
           <div className="flex flex-col gap-3 border-t border-border pt-4">
-            <Button
-              variant="primary"
-              onClick={() => {
-                const sept = targetEmp?.septemberPay
-                const now = confirmedBase
-                const bonus =
-                  sept != null && now != null ? Math.max(0, now - sept) : undefined
-                const cur = targetEmp?.currency || '£'
-                const body =
-                  sept != null && bonus != null && now != null
-                    ? `Base ${formatMoney(cur, sept)} · One-time bonus ${formatMoney(cur, bonus)} · this cycle pay ${formatMoney(cur, now)} total, tax recalculated.`
-                    : 'Split the submitted amount into base + one-time bonus; tax recalculated.'
-                askConfirm({
-                  title: 'Split into base + bonus',
-                  body,
-                  extra: 'Optional: attach the bonus letter after confirming (Use demo file / Upload / Drive).',
-                  confirmLabel: 'Confirm split',
-                  onConfirm: async () => {
-                    await resolveIssue(issue.id, {
-                      resolution: 'salary_structure',
-                      payload: { base: sept, bonus },
-                    })
-                    pushToast('Salary split into base + bonus')
-                  },
-                })
-              }}
+            <Link
+              to={issue.employeeId ? `/people/${issue.employeeId}?panel=salary` : '/people'}
+              className="inline-flex w-fit rounded bg-text-primary px-3 py-1.5 text-[13px] font-medium text-white"
             >
-              Split into base + bonus
-            </Button>
+              Fix in HR tool
+            </Link>
             <Button
               variant="secondary"
               onClick={() =>
@@ -372,6 +371,16 @@ function IssueDetail({ issue }: { issue: IssueDto }) {
               {confirmedLabel} is correct
             </Button>
             <Link
+              to={
+                issue.employeeId
+                  ? `/people/${issue.employeeId}?panel=salary&hike=1`
+                  : '/people'
+              }
+              className="text-[13px] font-medium text-text-primary hover:underline"
+            >
+              Salary hike + bonus
+            </Link>
+            <Link
               to={issue.facts?.openSalaryHref || (issue.employeeId ? `/people/${issue.employeeId}?panel=salary` : '/people')}
               className="text-[13px] font-medium text-status-info-text hover:underline"
             >
@@ -386,14 +395,17 @@ function IssueDetail({ issue }: { issue: IssueDto }) {
                   Employee needs to add: {employeeFields.join(', ')}
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {!issue.reminderSentOn ? (
-                    <Button variant="primary" onClick={runRemind}>
-                      Remind employee
-                    </Button>
-                  ) : null}
-                  <Button variant="primary" onClick={() => setShowAdd('employee')}>
-                    Add details myself
+                  <Button variant="primary" onClick={runRemind}>
+                    {issue.reminderSentOn ? 'Resend reminder' : 'Remind employee'}
                   </Button>
+                  {issue.employeeId ? (
+                    <Link
+                      to={`/people/${issue.employeeId}?panel=missing#missing-details`}
+                      className="inline-flex h-8 items-center rounded bg-text-primary px-3 text-[13px] font-medium text-white"
+                    >
+                      Add details
+                    </Link>
+                  ) : null}
                 </div>
                 {showAdd === 'employee' ? (
                   <div className="mt-3 space-y-2 rounded border border-border bg-canvas p-3">
@@ -433,9 +445,14 @@ function IssueDetail({ issue }: { issue: IssueDto }) {
                 <p className="mb-2 text-[13px] font-medium text-text-primary">
                   You need to add: {hrFields.join(', ')}
                 </p>
-                <Button variant="primary" onClick={() => setShowAdd('hr')}>
-                  Add details
-                </Button>
+                {issue.employeeId ? (
+                  <Link
+                    to={`/people/${issue.employeeId}?panel=missing#missing-details`}
+                    className="inline-flex h-8 items-center rounded bg-text-primary px-3 text-[13px] font-medium text-white"
+                  >
+                    Add details
+                  </Link>
+                ) : null}
                 {showAdd === 'hr' ? (
                   <div className="mt-3 space-y-2 rounded border border-border bg-canvas p-3">
                     <div className="flex flex-wrap gap-3">
@@ -453,9 +470,10 @@ function IssueDetail({ issue }: { issue: IssueDto }) {
                       variant="primary"
                       disabled={hrFields.some((f) => !(values[f] || '').trim())}
                       onClick={() =>
-                        confirmResolve('add_details', {
-                          fields: Object.fromEntries(hrFields.map((f) => [f, values[f]])),
-                        })
+                        saveFields(
+                          Object.fromEntries(hrFields.map((f) => [f, values[f] || ''])),
+                          'add_details',
+                        )
                       }
                     >
                       Save
@@ -491,9 +509,13 @@ export function ActionsPage() {
   const selectedIssueId = useAppStore((s) => s.selectedIssueId)
   const loadIssue = useAppStore((s) => s.loadIssue)
   const overview = useAppStore((s) => s.overview)
+  const persona = useAppStore((s) => s.persona)
+  const company = useAppStore((s) => s.company)
+  const lockedCountry = personaCountry(persona, company)
+  const lockedCode = persona === 'global' ? '' : persona
 
-  const countryParam = params.get('country') || ''
-  const countryFilter = COUNTRY_PARAM[countryParam] || ''
+  const countryParam = lockedCode || params.get('country') || ''
+  const countryFilter = lockedCountry || COUNTRY_PARAM[countryParam] || ''
   const openIssues = issues.filter((i) => {
     if (i.status !== 'open') return false
     if (countryFilter && i.country !== countryFilter) return false
@@ -535,7 +557,9 @@ export function ActionsPage() {
         title="Action needed"
         subtitle={
           openIssues.length === 0
-            ? 'No open actions'
+            ? countryFilter
+              ? `No issues · ${countryFilter}`
+              : 'No issues'
             : `${openIssues.length} open · blocking first, then by deadline`
         }
         actions={
@@ -544,6 +568,7 @@ export function ActionsPage() {
             <select
               className="h-8 rounded border border-border bg-surface px-2 text-xs text-text-primary"
               value={countryParam}
+              disabled={Boolean(lockedCode)}
               onChange={(e) => {
                 const next = new URLSearchParams(params)
                 if (e.target.value) next.set('country', e.target.value)
@@ -565,8 +590,12 @@ export function ActionsPage() {
 
       {openIssues.length === 0 && !selectedIssue ? (
         <EmptyState
-          title="All clear"
-          description="No open issues for this prototype date. Change the date or continue the demo."
+          title="No issues"
+          description={
+            countryFilter
+              ? `No open issues for ${countryFilter} on this date.`
+              : 'No open issues for this prototype date. Change the date or continue the demo.'
+          }
         />
       ) : (
         <div className="grid grid-cols-12 gap-4">

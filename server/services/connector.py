@@ -31,3 +31,7 @@ def record_exit(
     store: Store, employee_id: str, body: Dict[str, Any], *, as_of: str, customer_id: str
 ) -> Dict[str, Any]:
     return inputs_svc.record_exit(store, employee_id, body, as_of=as_of, customer_id=customer_id)
+
+
+def undo_exit(store: Store, employee_id: str, *, as_of: str, customer_id: str) -> Dict[str, Any]:
+    return inputs_svc.undo_exit(store, employee_id, as_of=as_of, customer_id=customer_id)

@@ -6,6 +6,7 @@ import { PeopleTabs } from '@/features/people/PeopleTabs'
 import { formatIsoDate } from '@/features/payroll/lib/labels'
 import { OFFER_DEMO_FILES, type OfferDemoFile } from '@/features/people/demoFiles'
 import { clarityApi } from '@/api/clarityClient'
+import { DrivePickCancelled, googleDriveReady, pickDriveFile } from '@/lib/googleDrive'
 import { useAppStore } from '@/store'
 import type { Country, ExtractResult, MappingRowDto } from '@/api/types'
 
@@ -97,7 +98,7 @@ export function AddEmployeePage() {
   const [createdId, setCreatedId] = useState<string | null>(null)
   const [confirmMsg, setConfirmMsg] = useState<string | null>(null)
 
-  const googleReady = Boolean(import.meta.env.VITE_GOOGLE_CLIENT_ID)
+  const googleReady = googleDriveReady()
 
   function pickSource(s: InputSource) {
     setSource(s)
@@ -110,12 +111,23 @@ export function AddEmployeePage() {
     setCreatedId(null)
   }
 
-  async function runExtract(name: string, file?: File) {
+  async function runExtract(
+    name: string,
+    file?: File,
+    drive?: { fileId: string; accessToken: string },
+  ) {
     setExtractBusy(true)
     try {
       let result: ExtractResult
       if (file) {
         result = await clarityApi.extractUpload(file, { asOf })
+      } else if (drive) {
+        result = await clarityApi.extractDrive({
+          fileName: name,
+          fileId: drive.fileId,
+          accessToken: drive.accessToken,
+          asOf,
+        })
       } else {
         result = await clarityApi.extractDrive({ fileName: name, asOf })
       }
@@ -256,8 +268,12 @@ export function AddEmployeePage() {
     }
     setSubmitBusy(true)
     try {
-      await fillMissingFields(createdId, { fields: payload, asOf })
-      pushToast('Details saved')
+      const saved = await fillMissingFields(createdId, { fields: payload, asOf })
+      pushToast(
+        saved.payTiming.level === 'green'
+          ? 'Thanks for adding your details. Payment is on track.'
+          : 'Details saved',
+      )
       navigate(`/people/${createdId}`)
     } catch (err) {
       pushToast(err instanceof Error ? err.message : 'Could not save details')
@@ -280,7 +296,7 @@ export function AddEmployeePage() {
           {(
             [
               { id: 'upload' as const, label: 'Upload', hint: 'From computer' },
-              { id: 'gdrive' as const, label: 'Google Drive', hint: googleReady ? 'Picker' : 'Not set up' },
+              { id: 'gdrive' as const, label: 'Google Drive', hint: googleReady ? 'Sign in' : 'Not set up' },
               { id: 'demo' as const, label: 'Demo', hint: 'Preset offer letter' },
             ] as const
           ).map((opt) => {
@@ -360,15 +376,31 @@ export function AddEmployeePage() {
           ) : null}
 
           {source === 'gdrive' && googleReady ? (
-            <Button
-              variant="secondary"
-              disabled={extractBusy}
-              onClick={() =>
-                pushToast('Google Picker – sign in, then pick a PDF from HR Documents')
-              }
-            >
-              Choose from Google Drive
-            </Button>
+            <div>
+              <Button
+                variant="secondary"
+                disabled={extractBusy}
+                onClick={() => {
+                  void (async () => {
+                    setExtractBusy(true)
+                    try {
+                      const picked = await pickDriveFile()
+                      await runExtract(picked.fileName, undefined, picked)
+                    } catch (err) {
+                      if (!(err instanceof DrivePickCancelled)) {
+                        pushToast(err instanceof Error ? err.message : 'Could not open Google sign-in')
+                      }
+                      setExtractBusy(false)
+                    }
+                  })()
+                }}
+              >
+                {extractBusy ? 'Waiting for Google…' : 'Sign in with Google'}
+              </Button>
+              <p className="mt-1 text-[11px] text-text-muted">
+                A Google window opens to sign in. Then pick a PDF, Word file, or image.
+              </p>
+            </div>
           ) : null}
 
           {fileName ? (

@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from domain.calendar_rules import (
     CUTOFF,
     NOV_CUTOFF,
+    PAYMENT_RETURNED,
     PAY_DATE,
     cycle_dates,
     parse_date,
@@ -30,7 +31,7 @@ def pay_outlook(store: Store, emp: Dict[str, Any], as_of: str) -> Dict[str, Any]
     flag = rules_svc.pay_flag(store, emp, as_of)
     salary = rules_svc.salary_structure(store, emp, as_of).to_dict()
     otps = rules_svc.one_time_payments(store, emp["id"], as_of)
-    missing = store.missing_fields(emp["id"], as_of)
+    missing = rules_svc.payment_missing_fields(store, emp, as_of)
     cd = cycle_dates(as_of)
     pay_date = parse_date(cd["payDate"])
     d = parse_date(as_of)
@@ -42,8 +43,20 @@ def pay_outlook(store: Store, emp: Dict[str, Any], as_of: str) -> Dict[str, Any]
     sept = float(emp.get("september_pay") or 0)
     monthly = float(salary.get("net") or base or sept)
     hire = emp.get("hire_date")
-    fixed_on = store.fields_completed_on(emp["id"])
+    fixed_on = rules_svc._payment_completed_on(store, emp, as_of)
     missed_october = _missed_october_pay(emp, as_of, missing, fixed_on, flag)
+
+    exit_row = store.get_exit(emp["id"], as_of)
+    if exit_row:
+        plan = rules_svc.exit_pay_plan(emp, exit_row)
+        net = float(plan["fnf"]["net"])
+        money = rules_svc.fmt_money(currency, net)
+        days = f"{plan['daysWorked']}/{plan['daysInMonth']} days"
+        if plan["onHold"]:
+            note = f"on hold for {plan['heldMonth']} · prorated {days} · pays {plan['payMonth']}"
+            return _pack(net, currency, plan["payMonth"], "held", note, f"{money} · {plan['payMonth']}", "warn")
+        note = f"prorated {days}"
+        return _pack(net, currency, plan["payMonth"], "scheduled", note, f"{money} · {plan['payMonth']}", "ok")
 
     # --- Still missing required fields ---
     if missing or flag.run in ("Held", "At risk"):
@@ -140,7 +153,7 @@ def pay_outlook(store: Store, emp: Dict[str, Any], as_of: str) -> Dict[str, Any]
         )
 
     # Returned payment
-    if emp["id"] == "emp_david" and d >= parse_date("2026-10-29"):
+    if emp["id"] == "emp_david" and d >= PAYMENT_RETURNED:
         issue = store.get_issue("issue_david_return", as_of=as_of)
         if issue and issue.get("status") == "open":
             return _pack(monthly, currency, month, "returned", "Account closed", "Returned by bank", "warn")
@@ -366,3 +379,189 @@ def _pack(
         "display": display,
         "tone": tone,
     }
+
+
+def profile_pay_banner(store: Store, emp: Dict[str, Any], as_of: str, outlook: Dict[str, Any]) -> Dict[str, str]:
+    """One banner for the employee profile: who gets paid, in which cycle."""
+    from domain.calendar_rules import cycle_dates, cycle_for_new_input, next_cycle_dates
+
+    currency = emp["currency"]
+    sentences: List[str] = []
+
+    exit_row = store.get_exit(emp["id"], as_of)
+    if exit_row:
+        plan = rules_svc.exit_pay_plan(emp, exit_row)
+        sentences.append(str(plan.get("message") or outlook.get("note") or outlook.get("display") or ""))
+        return _banner(sentences, outlook)
+
+    if outlook.get("status") == "returned":
+        sentences.append(
+            "October payment was returned by the bank on 29 Oct. "
+            "It will be re-sent in November 2026 (Nov 28) once the bank account is updated."
+        )
+        return _banner(sentences, outlook)
+
+    missing = rules_svc.payment_missing_fields(store, emp, as_of)
+    if missing:
+        fields = _added_clause(missing)
+        land = _salary_landing(emp, as_of)
+        cut = short_date(land["inputFinalisation"])
+        pay = short_date(land["payDate"])
+        added = emp.get("date_added")
+        late = ""
+        if added:
+            home = cycle_dates(added)
+            if parse_date(added) > parse_date(home["inputFinalisation"]):
+                late = f"Added after inputs closed on {short_date(home['inputFinalisation'])}. "
+        if parse_date(as_of) > parse_date(land["inputFinalisation"]):
+            nxt = next_cycle_dates(land["payDate"])
+            sentences.append(
+                f"{late}Not in this run until {fields} added. "
+                f"Inputs for {land['label']} closed {cut}. "
+                f"They will be paid in {nxt['label']} ({short_date(nxt['payDate'])})."
+            )
+        else:
+            sentences.append(
+                f"{late}Not in this run until {fields} added. "
+                f"Will be paid in {land['label']} ({pay}) if fixed by {cut}."
+            )
+    else:
+        sentences.append(_salary_sentence(store, emp, as_of, outlook))
+
+    for payment in rules_svc.one_time_payments(store, emp["id"], as_of):
+        kind = payment.type or ""
+        label = payment.label or ""
+        if kind != "Bonus" and "bonus" not in label.lower():
+            continue
+        if not payment.recorded_on:
+            continue
+        recorded = str(payment.recorded_on)
+        land = cycle_for_new_input(recorded)
+        money = rules_svc.fmt_money(currency, payment.amount)
+        pay = short_date(land["payDate"])
+        home = cycle_dates(recorded)
+        if parse_date(recorded) > parse_date(home["inputFinalisation"]):
+            closed = short_date(home["inputFinalisation"])
+            sentences.append(
+                f"Bonus of {money} was added after inputs closed on {closed}. "
+                f"It will be paid in {land['label']} ({pay})."
+            )
+        else:
+            sentences.append(f"Bonus of {money} will be paid in {land['label']} ({pay}).")
+
+    hike = _hike_sentence(store, emp, as_of)
+    if hike:
+        sentences.append(hike)
+    return _banner(sentences, outlook)
+
+
+def _added_clause(fields: List[str]) -> str:
+    text = rules_svc.sentence_fields(fields)
+    verb = "is" if len(fields) == 1 else "are"
+    return f"{text} {verb}"
+
+
+def _banner(sentences: List[str], outlook: Dict[str, Any]) -> Dict[str, str]:
+    text = " ".join(s.strip() for s in sentences if s and s.strip())
+    late = "after inputs closed" in text or "Not in this run" in text
+    if outlook.get("status") in ("held", "not_paid", "returned") or outlook.get("tone") == "danger":
+        tone = "danger"
+    elif late or outlook.get("tone") == "warn" or outlook.get("status") == "moves":
+        tone = "warn"
+    elif outlook.get("status") == "paid":
+        tone = "ok"
+    else:
+        tone = "info"
+    return {"text": text, "tone": tone}
+
+
+def _salary_landing(emp: Dict[str, Any], as_of: str) -> Dict[str, Any]:
+    from domain.calendar_rules import cycle_dates, cycle_for_new_input
+
+    added = emp.get("date_added")
+    if added:
+        return cycle_for_new_input(added)
+    return cycle_dates(as_of)
+
+
+def _salary_sentence(store: Store, emp: Dict[str, Any], as_of: str, outlook: Dict[str, Any]) -> str:
+    from domain.calendar_rules import cycle_dates, cycle_for_new_input
+
+    status = outlook.get("status")
+    if status == "returned":
+        return "October payment was returned by the bank. It will be re-sent once bank details are updated."
+    if status == "paid":
+        text = str(outlook.get("display") or "Paid")
+        return text if text.endswith(".") else f"{text}."
+
+    added = emp.get("date_added")
+    if added:
+        home = cycle_dates(added)
+        land = cycle_for_new_input(added)
+        pay = short_date(land["payDate"])
+        if parse_date(added) > parse_date(home["inputFinalisation"]):
+            closed = short_date(home["inputFinalisation"])
+            return (
+                f"Added after inputs closed on {closed}. "
+                f"Will be paid in {land['label']} ({pay})."
+            )
+        return f"Will be paid in {land['label']} ({pay})."
+
+    cd = cycle_dates(as_of)
+    if status in ("moves", "not_paid"):
+        nxt = _next_month(cd)
+        return f"Will not be paid in {cd['label']}. Pay moves to {nxt}."
+    return f"Will be paid in {cd['label']} ({short_date(cd['payDate'])})."
+
+
+def _hike_sentence(store: Store, emp: Dict[str, Any], as_of: str) -> str:
+    from domain.calendar_rules import cycle_dates, cycle_for_new_input, next_cycle_dates
+
+    try:
+        logs = store.change_log(emp["id"], as_of)
+    except Exception:  # noqa: BLE001
+        logs = []
+    changes = [row for row in logs if (row.get("field") or "") == "base_salary" and row.get("as_of")]
+    if not changes:
+        return ""
+    last = changes[-1]
+    when = str(last["as_of"])
+    try:
+        amount = float(last.get("new_value") or 0)
+    except (TypeError, ValueError):
+        return ""
+    if amount <= 0:
+        return ""
+    money = rules_svc.fmt_money(emp["currency"], amount)
+    home = cycle_dates(when)
+    land = cycle_for_new_input(when)
+    pay = short_date(land["payDate"])
+    if parse_date(when) > parse_date(home["inputFinalisation"]):
+        if _hike_stays_on_open_review(store, emp, when, as_of):
+            return (
+                f"New monthly salary of {money} will be paid in {home['label']} "
+                f"({short_date(home['payDate'])})."
+            )
+        closed = short_date(home["inputFinalisation"])
+        return (
+            f"New monthly salary of {money} was added after inputs closed on {closed}. "
+            f"It will be paid in {land['label']} ({pay}). This cycle pays the previous salary."
+        )
+    return f"New monthly salary of {money} will be paid in {land['label']} ({pay})."
+
+
+def _hike_stays_on_open_review(store: Store, emp: Dict[str, Any], when: str, as_of: str) -> bool:
+    """A hike saved during an open review stays on that review when the row was approved there."""
+    from domain.calendar_rules import next_cycle_dates
+
+    cycle = store.get_current_cycle(emp["customer_id"])
+    if not cycle:
+        return False
+    line = store.current_review_line(cycle["id"], emp["id"])
+    if not line or not store.line_approval(line["id"], as_of):
+        return False
+    created = line.get("created_on") or ""
+    nxt_open = str(next_cycle_dates(when).get("open") or "")
+    if created and nxt_open and created >= nxt_open:
+        return False
+    return True

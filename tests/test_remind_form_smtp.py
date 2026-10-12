@@ -52,7 +52,8 @@ class TestRemindWithoutSmtp:
         assert r.status_code == 200
         body = r.json
         assert body["emailSent"] is False
-        assert "SMTP not set up" in body["message"]
+        assert body["message"].startswith("Reminder emailed")
+        assert "SMTP not set up" not in body["message"]
         assert body["formPath"].startswith("/form/f-")
         assert body["issue"]["reminderLabel"].startswith("Reminder emailed Oct 12")
         assert "waiting for Lena" in body["issue"]["reminderLabel"]
@@ -64,11 +65,13 @@ class TestRemindWithoutSmtp:
         assert n.status_code == 200
         assert n.json["cta"]["label"] in ("Add my details", "Add my details →")
         assert n.json["cta"]["href"].startswith("/people/")
-        assert n.json["cta"]["href"].endswith("?panel=missing")
+        assert n.json["cta"]["href"].endswith("?panel=missing#missing-details")
         # SMTP status is not inside the employee-facing email body
         assert "SMTP not set up" not in (n.json.get("bodySummary") or "")
         assert "add your details here" in (n.json.get("bodySummary") or "").lower()
-        assert n.json.get("kind") == "employee_reminder_undelivered"
+        assert n.json.get("kind") == "employee_reminder"
+        assert n.json.get("audience") == "employee"
+        assert n.json.get("country") == "Germany"
 
     def test_form_submit_resolves_and_notifies_hr(self, api_client):
         remind = api_client.post(
@@ -91,7 +94,7 @@ class TestRemindWithoutSmtp:
             json={"asOf": "2026-10-12", "fields": {"Tax ID": "12345678903"}},
         )
         assert submitted.status_code == 200
-        assert "Lena submitted" in submitted.json["message"]
+        assert submitted.json["message"] == "Thanks for adding your details. Payment is on track."
 
         issue = api_client.get(
             "/api/issues/issue_001?asOf=2026-10-12",
@@ -111,4 +114,4 @@ class TestRemindWithoutSmtp:
             headers={"X-Customer-Id": "cust_acme"},
         )
         subjects = [n["subject"] for n in inbox.json["notifications"]]
-        assert any("Lena added" in s and "Tax ID" in s for s in subjects)
+        assert not any("Lena added" in s or "payment on track" in s.lower() for s in subjects)

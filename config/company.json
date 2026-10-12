@@ -6,14 +6,27 @@
   "logoFg": "#ffffff",
   "workspaceSubtitle": "HR workspace",
   "hrTool": "Workday",
-  "syncCaption": "Synced from Workday",
+  "syncCaption": "Sync from HRIS tools and third party channels",
   "syncAgoMinutes": 12,
   "payrollCaption": "Powered by Multiplier",
   "multiplierBrandColor": "#863bff",
   "admin": {
     "name": "Maya Rao",
-    "role": "HR admin",
-    "initials": "MR"
+    "role": "Global HR admin",
+    "initials": "MR",
+    "email": "maya.rao@acmetech.example"
   },
+  "financeAdmin": {
+    "name": "Noah Grant",
+    "role": "Finance admin",
+    "initials": "NG",
+    "email": "noah.grant@acmetech.example"
+  },
+  "countryAdmins": [
+    { "code": "IN", "country": "India", "name": "Priya Mehta", "role": "Country HR admin", "initials": "PM", "email": "priya.mehta@acmetech.example" },
+    { "code": "UK", "country": "UK", "name": "Helen Clarke", "role": "Country HR admin", "initials": "HC", "email": "helen.clarke@acmetech.example" },
+    { "code": "DE", "country": "Germany", "name": "Greta Hoffmann", "role": "Country HR admin", "initials": "GH", "email": "greta.hoffmann@acmetech.example" },
+    { "code": "BR", "country": "Brazil", "name": "Camila Rocha", "role": "Country HR admin", "initials": "CR", "email": "camila.rocha@acmetech.example" }
+  ],
   "prototypeBar": "Prototype · Acme Tech's HR workspace (employee data synced from Workday) with Multiplier Payroll embedded"
 }

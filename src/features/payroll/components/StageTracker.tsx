@@ -1,7 +1,7 @@
 import { Lock } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { formatIsoDate } from '@/features/payroll/lib/labels'
-import type { OutcomeDto } from '@/api/types'
+import { cycleDay } from '@/features/persona'
 
 type StageState = 'upcoming' | 'current' | 'locked' | 'done' | 'paid'
 
@@ -16,6 +16,7 @@ type StageBox = {
 type CycleDates = {
   cutoff: string
   calculation: string
+  finalSync?: string
   reviewOpen: string
   reviewClose: string
   funding?: string | null
@@ -23,211 +24,117 @@ type CycleDates = {
   pay: string
 }
 
+type PayResult = {
+  paidSuccessfully: { count: number; of: number }
+}
+
 type Props = {
   asOf: string
   openActions: number
-  outcome?: OutcomeDto | null
+  payOutcomes?: PayResult | null
   signedOff?: boolean
   signedOn?: string | null
   needsCheck?: number
   closedWithoutSignOff?: boolean
   unappliedCount?: number
   dates: CycleDates
-}
-
-function daysBetween(from: string, to: string): number {
-  return Math.max(
-    0,
-    Math.round(
-      (new Date(`${to}T00:00:00`).getTime() - new Date(`${from}T00:00:00`).getTime()) /
-        86400000,
-    ),
-  )
+  willMiss?: number
+  financeName?: string
 }
 
 function buildStages(
   asOf: string,
   openActions: number,
-  outcome: OutcomeDto | null | undefined,
+  payOutcomes: PayResult | null | undefined,
   signedOff: boolean | undefined,
   signedOn: string | null | undefined,
   needsCheck: number,
   closedWithoutSignOff: boolean,
   unappliedCount: number,
   DATES: CycleDates,
+  willMiss = 0,
+  financeName = 'Finance',
 ): StageBox[] {
-  const moved = outcome?.movedToNovember.count ?? (asOf > DATES.cutoff ? openActions : 0)
+  void openActions
+  void payOutcomes
+  void signedOff
+  void signedOn
+  void needsCheck
+  void closedWithoutSignOff
+  void unappliedCount
+  const inputClose = cycleDay(DATES.pay, 15)
+  const reviewStart = cycleDay(DATES.pay, 16)
+  const reviewEnd = cycleDay(DATES.pay, 19)
+  const finalReport = cycleDay(DATES.pay, 21)
+  const reviewClosed = cycleDay(DATES.pay, 22)
+  const fundStart = cycleDay(DATES.pay, 24)
+  const fundEnd = cycleDay(DATES.pay, 27)
+  const payDay = DATES.pay
+  const payLeft = Math.round(
+    (Date.parse(`${payDay}T00:00:00Z`) - Date.parse(`${asOf}T00:00:00Z`)) / 86400000,
+  )
+  const paidCount = payOutcomes?.paidSuccessfully
+  const miss = willMiss > 0 ? `${willMiss} will miss payment` : 'On track'
+  const missHref = willMiss > 0 ? '/payroll/actions' : undefined
+  const span = (start: string, end: string): StageState =>
+    asOf < start ? 'upcoming' : asOf <= end ? 'current' : 'done'
 
-  const input: StageBox = (() => {
-    if (asOf < DATES.cutoff) {
-      const days = daysBetween(asOf, DATES.cutoff)
-      const left =
-        days === 0 ? 'Cutoff today' : days === 1 ? '1 day left' : `${days} days left`
-      return {
-        key: 'Input finalisation',
-        dateLabel: formatIsoDate(DATES.cutoff),
-        state: 'current',
-        status: `${left}${openActions ? ` · ${openActions} actions open` : ''}`,
-      }
-    }
-    if (asOf === DATES.cutoff) {
-      return {
-        key: 'Input finalisation',
-        dateLabel: formatIsoDate(DATES.cutoff),
-        state: 'current',
-        status: `Cutoff today${openActions ? ` · ${openActions} actions open` : ''}`,
-      }
-    }
-    if (openActions > 0 || moved > 0) {
-      return {
-        key: 'Input finalisation',
-        dateLabel: formatIsoDate(DATES.cutoff),
-        state: 'locked',
-        status: `Inputs locked ${formatIsoDate(DATES.cutoff)} · ${moved || openActions} employees moved to next cycle`,
-      }
-    }
-    return {
-      key: 'Input finalisation',
-      dateLabel: formatIsoDate(DATES.cutoff),
-      state: 'done',
-      status: `Inputs locked ${formatIsoDate(DATES.cutoff)} ✓`,
-    }
-  })()
-
-  const calcDate = DATES.calculation
-  const calculation: StageBox =
-    asOf < calcDate
-      ? {
-          key: 'Calculation & final checks',
-          dateLabel: formatIsoDate(calcDate),
-          state: 'upcoming',
-          status: `Calculation · ${formatIsoDate(calcDate)}`,
-        }
-      : asOf < DATES.reviewOpen
-        ? {
-            key: 'Calculation & final checks',
-            dateLabel: formatIsoDate(calcDate),
-            state: 'current',
-            status: 'Multiplier calculating pay',
-          }
-        : {
-            key: 'Calculation & final checks',
-            dateLabel: formatIsoDate(calcDate),
-            state: 'done',
-            status: `Pay calculated ${formatIsoDate(calcDate)} ✓`,
-          }
-
-  const review: StageBox = (() => {
-    if (asOf < DATES.reviewOpen) {
-      return {
-        key: 'Review',
-        dateLabel: `${formatIsoDate(DATES.reviewOpen)}–${formatIsoDate(DATES.reviewClose).replace(/^[A-Za-z]+ /, '')}`,
-        state: 'upcoming',
-        status: `Opens ${formatIsoDate(DATES.reviewOpen)}`,
-      }
-    }
-    if (asOf <= DATES.reviewClose) {
-      if (signedOff) {
-        return {
-          key: 'Review',
-          dateLabel: formatIsoDate(DATES.reviewClose),
-          state: 'done',
-          status: `Payroll approved ${formatIsoDate(signedOn || asOf)}`,
-        }
-      }
-      return {
-        key: 'Review',
-        dateLabel: formatIsoDate(DATES.reviewClose),
-        state: 'current',
-        status: `Open · closes ${formatIsoDate(DATES.reviewClose)}`,
-      }
-    }
-    if (signedOff) {
-      return {
-        key: 'Review',
-        dateLabel: formatIsoDate(DATES.reviewClose),
-        state: 'done',
-        status: `Payroll approved ${formatIsoDate(signedOn || DATES.reviewClose)}`,
-      }
-    }
-    const n = unappliedCount || needsCheck
-    return {
-      key: 'Review',
-      dateLabel: formatIsoDate(DATES.reviewClose),
-      state: 'locked',
-      status: `Closed · ${n} changes moved to next cycle`,
-    }
-  })()
-
-  const fundingDate = DATES.funding
-  const funding: StageBox = fundingDate
-    ? asOf < fundingDate
-      ? {
-          key: 'Funding',
-          dateLabel: formatIsoDate(fundingDate),
-          state: 'upcoming',
-          status: `Funding · ${formatIsoDate(fundingDate)}`,
-        }
-      : {
-          key: 'Funding',
-          dateLabel: formatIsoDate(fundingDate),
-          state: 'done',
-          status: `Funded ${formatIsoDate(fundingDate)} ✓`,
-        }
-    : {
-        key: 'Funding',
-        dateLabel: '—',
-        state: 'upcoming',
-        status: 'Funding',
-      }
-
-  const submittedDate = DATES.submitted
-  const submitted: StageBox = submittedDate
-    ? asOf < submittedDate
-      ? {
-          key: 'Submitted',
-          dateLabel: formatIsoDate(submittedDate),
-          state: 'upcoming',
-          status: `Submitted · ${formatIsoDate(submittedDate)}`,
-        }
-      : {
-          key: 'Submitted',
-          dateLabel: formatIsoDate(submittedDate),
-          state: 'done',
-          status: `Submitted ${formatIsoDate(submittedDate)} ✓`,
-        }
-    : {
-        key: 'Submitted',
-        dateLabel: '—',
-        state: 'upcoming',
-        status: 'Submitted',
-      }
-
-  const paid: StageBox =
-    asOf < DATES.pay
-      ? {
-          key: 'Paid',
-          dateLabel: formatIsoDate(DATES.pay),
-          state: 'upcoming',
-          status: `Pay day · ${formatIsoDate(DATES.pay)}`,
-        }
-      : {
-          key: 'Paid',
-          dateLabel: formatIsoDate(DATES.pay),
-          state: 'paid',
-          status: outcome
-            ? `Paid ${formatIsoDate(DATES.pay)} · ${outcome.paidOnTime.count} of ${outcome.inRun ?? outcome.total} employees received pay`
-            : `Paid ${formatIsoDate(DATES.pay)}`,
-          href: outcome?.paidOnTime.href || '/people?filter=paid_october',
-        }
-
-  const stages = [input, calculation, review, funding, submitted, paid]
-  if (asOf >= DATES.pay) {
-    return stages.map((s) =>
-      s.key === 'Paid' ? s : s.state === 'current' ? { ...s, state: 'done' as const } : s,
-    )
-  }
-  return stages
+  return [
+    {
+      key: 'Input close',
+      dateLabel: formatIsoDate(inputClose),
+      state: span(inputClose, inputClose),
+      status:
+        asOf <= inputClose
+          ? `New employees close ${formatIsoDate(inputClose)}`
+          : `Closed ${formatIsoDate(inputClose)} ✓`,
+    },
+    {
+      key: 'Review window',
+      dateLabel: `${formatIsoDate(reviewStart)}–${formatIsoDate(reviewEnd).replace(/^[A-Za-z]+ /, '')}`,
+      state: span(reviewStart, reviewEnd),
+      status: miss,
+      href: missHref,
+    },
+    {
+      key: 'Final report',
+      dateLabel: formatIsoDate(finalReport),
+      state: span(finalReport, finalReport),
+      status: willMiss > 0 ? `${willMiss} will miss this window` : 'On track',
+      href: missHref,
+    },
+    {
+      key: 'Review closed',
+      dateLabel: formatIsoDate(reviewClosed),
+      state: span(reviewClosed, reviewClosed),
+      status: miss,
+      href: missHref,
+    },
+    {
+      key: 'Funding',
+      dateLabel: `${formatIsoDate(fundStart)}–${formatIsoDate(fundEnd).replace(/^[A-Za-z]+ /, '')}`,
+      state: span(fundStart, fundEnd),
+      status:
+        asOf > fundEnd
+          ? `Funds added · ${financeName} ✓`
+          : `Add funds · ${financeName}`,
+    },
+    {
+      key: 'Pay day',
+      dateLabel: formatIsoDate(payDay),
+      state: payLeft > 1 ? 'upcoming' : payLeft >= 0 ? 'current' : 'paid',
+      status:
+        payLeft > 1
+          ? `${payLeft} days left`
+          : payLeft === 1
+            ? '1 day left'
+            : payLeft === 0
+              ? 'Today'
+              : paidCount
+                ? `Paid ${paidCount.count} of ${paidCount.of}`
+                : 'Paid',
+    },
+  ]
 }
 
 const stateClass: Record<StageState, string> = {
@@ -241,35 +148,36 @@ const stateClass: Record<StageState, string> = {
 export function StageTracker({
   asOf,
   openActions,
-  outcome,
+  payOutcomes,
   signedOff,
   signedOn,
   needsCheck = 0,
   closedWithoutSignOff = false,
   unappliedCount = 0,
   dates,
+  willMiss = 0,
+  financeName,
 }: Props) {
   const stages = buildStages(
     asOf,
     openActions,
-    outcome,
+    payOutcomes,
     signedOff,
     signedOn,
     needsCheck,
     closedWithoutSignOff,
     unappliedCount,
     dates,
+    willMiss,
+    financeName,
   )
 
   return (
     <section className="rounded border border-border bg-surface p-4">
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3">
         <p className="text-xs font-medium uppercase tracking-wide text-text-secondary">
           Stage tracker
         </p>
-        <span className="tabular text-xs text-text-secondary">
-          Pay date: {formatIsoDate(dates.pay)}
-        </span>
       </div>
       <div className="grid grid-cols-6 gap-2">
         {stages.map((stage) => {
