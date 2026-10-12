@@ -22,8 +22,9 @@ const payrollNav = [
 
 const stubNav = [
   { label: 'AI assistant', tag: 'V2', note: 'Planned for V2' },
+  { label: 'AI assisted voice call', tag: 'V2', note: 'Planned for V2' },
   { label: 'Finance view', tag: 'V3', note: 'Planned for V3' },
-  { label: 'Calendar view', tag: 'V3', note: 'Planned for V3' },
+  { label: 'Employee payroll tool', tag: 'V3', note: 'Planned for V3' },
 ]
 
 function itemClass(active: boolean) {

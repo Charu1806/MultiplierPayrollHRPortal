@@ -44,12 +44,13 @@ What the prototype does, and what is still a later version. Requirements are in 
 |---|---|
 | Slack reminders | V2 |
 | AI assistant | V2 |
+| AI assisted voice call | V2 |
 | Write-back into Workday | V2 |
 | Mobile | V2 |
 | Time off, Insurance, Expenses | V2 |
 | Bulk CSV upload | V2 |
 | Finance view | V3 |
-| Calendar view | V3 |
+| Employee payroll tool | V3 |
 | In-app alerts | V3 |
 | Guided fix steps | V3 |
 | Instant / off-cycle payment | Not available |

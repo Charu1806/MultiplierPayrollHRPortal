@@ -488,7 +488,7 @@ Desktop 1440px. HR shell neutral; Payroll pages Multiplier-branded. Routes are *
 | `/people/add` | `hr_tool_people_add_employee` | employees + documents |
 | `/people/:id` | `hr_tool_people_priya_nair` | employee + journey |
 
-Greyed stubs (AI assistant V2, Finance/Calendar V3, Slack V2) stay client-side until their APIs exist.
+Greyed stubs (AI assistant V2, AI assisted voice call V2, Finance view V3, Employee payroll tool V3, Slack V2) stay client-side until their APIs exist.
 
 **UI stack:** React, TypeScript, Vite, Tailwind (`DESIGN.md`), React Router, Zustand cache, `lucide-react`.
 
@@ -551,8 +551,8 @@ Edge-case rules are locked in `tests/` + `data/domain/` and must hold in service
 | Version | Backend / API | UI |
 |---|---|---|
 | **V1** | Calendar, Connector, Validation, Issue, Review, Notification (email), Submission; Clarity API as above | Payroll tab + panel |
-| **V2** | Slack channel; write-back to HRIS; AI assistant endpoints | Mobile; Slack tab; assistant nav |
-| **V3** | Finance & calendar projection APIs; guided-fix workflows | Finance view; calendar view; guided steps |
+| **V2** | Slack channel; write-back to HRIS; AI assistant and voice-call endpoints | Mobile; Slack tab; assistant nav; AI assisted voice call |
+| **V3** | Finance APIs; employee payroll tool; guided-fix workflows | Finance view; Employee payroll tool; guided steps |
 
 ---
 

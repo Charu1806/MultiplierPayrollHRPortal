@@ -93,8 +93,9 @@ The solution is a **Multiplier-branded Payroll tab embedded inside the customer'
 │  Employees                                                    │
 │  ─────────                                                    │
 │  AI assistant  [V2] (greyed)                                  │
+│  AI assisted voice call [V2] (greyed)                         │
 │  Finance view  [V3] (greyed)                                  │
-│  Calendar view [V3] (greyed)                                  │
+│  Employee payroll tool [V3] (greyed)                          │
 └──────────────┴────────────────────────────────────────────────┘
 ```
 
@@ -473,13 +474,14 @@ Standalone page (no HR nav). Signed single-use token expires after the cycle cut
 | Item | Version | How to show |
 |---|---|---|
 | AI assistant | V2 | Greyed nav item with tag |
+| AI assisted voice call | V2 | Greyed nav item with tag |
 | Write-back to HR tool | V2 | Greyed note on issue detail |
 | Slack reminders | V2 | Greyed tab in Notifications |
 | Time off, Insurance, Expenses | V2 | Greyed under People |
 | Mobile | V2 | Not built (mention in footer) |
 | Finance view | V3 | Greyed nav item with tag |
+| Employee payroll tool | V3 | Greyed nav item with tag |
 | In-app alerts | V3 | Email is the inbox |
-| Calendar view | V3 | Greyed nav item with tag |
 | Guided fix steps | V3 | Info icon tooltip on each issue |
 | Instant / off-cycle payment | Not available | Disabled option with tooltip wherever an employee moves to November |
 | Fix in Workday, Correct the amount | Not built | Toast "Not built in prototype" |
