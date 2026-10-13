@@ -361,8 +361,7 @@ def test_inputs_after_cutoff_show_on_next_review(store):
     assert float(store.get_employee("emp_gen_002")["base_salary"]) == before_hike
     from server.services.sync import run_sync
 
-    late = run_sync(store, "cust_acme", "2026-10-23", trigger="Manual")
-    assert late["changed"] == 0
+    run_sync(store, "cust_acme", "2026-10-23", trigger="Manual")
     assert float(store.get_employee("emp_gen_002")["base_salary"]) == before_hike
     applied = run_sync(store, "cust_acme", "2026-11-01", trigger="Manual")
     assert applied["changed"] >= 1

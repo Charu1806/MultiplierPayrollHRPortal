@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Check } from 'lucide-react'
 import { Button, EmptyState, PageHeader } from '@/components'
+import { FinalReportNote } from '@/features/payroll/components/StageTracker'
 import { formatIsoDate } from '@/features/payroll/lib/labels'
-import { personaCountry } from '@/features/persona'
+import { personaCountry, seesAllCountries } from '@/features/persona'
 import { reviewCards } from '@/features/payroll/lib/scope'
 import { useAppStore } from '@/store'
 import type { ReviewLineDto, ReviewResponse } from '@/api/types'
@@ -71,12 +72,14 @@ function RowActions({
   muted,
   nextLabel,
   onApprove,
+  onReject,
   onUndo,
 }: {
   line: ReviewLineDto
   muted: boolean
   nextLabel: string
   onApprove: () => void
+  onReject: () => void
   onUndo: () => void
 }) {
   return (
@@ -96,19 +99,43 @@ function RowActions({
             </button>
           ) : null}
         </>
+      ) : line.rejected ? (
+        <>
+          <span className="inline-flex h-8 items-center rounded border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-700">
+            Rejected · old base pay
+          </span>
+          {!muted ? (
+            <button
+              type="button"
+              className="h-8 px-3 text-sm text-slate-700 hover:underline"
+              onClick={onUndo}
+            >
+              Undo
+            </button>
+          ) : null}
+        </>
       ) : muted ? (
         <span className="inline-flex h-8 items-center rounded border border-slate-200 bg-slate-50 px-2 text-[11px] font-medium text-slate-500">
           Moved · {nextLabel}
         </span>
       ) : (
-        <button
-          type="button"
-          className="inline-flex h-8 items-center gap-1.5 rounded border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 hover:bg-slate-50"
-          onClick={onApprove}
-        >
-          <Check size={14} strokeWidth={2.5} />
-          Approve
-        </button>
+        <>
+          <button
+            type="button"
+            className="inline-flex h-8 items-center gap-1.5 rounded border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 hover:bg-slate-50"
+            onClick={onApprove}
+          >
+            <Check size={14} strokeWidth={2.5} />
+            Approve
+          </button>
+          <button
+            type="button"
+            className="inline-flex h-8 items-center rounded border border-slate-300 bg-white px-3 text-sm font-medium text-slate-800 hover:bg-slate-50"
+            onClick={onReject}
+          >
+            Reject
+          </button>
+        </>
       )}
       {line.employeeId ? (
         <Link
@@ -131,7 +158,7 @@ export function ReviewPage() {
   const persona = useAppStore((s) => s.persona)
   const [params, setParams] = useSearchParams()
   const lockedCountry = personaCountry(persona, company)
-  const countryParam = persona === 'global' ? params.get('country') || '' : persona
+  const countryParam = seesAllCountries(persona) ? params.get('country') || '' : persona
   const countryName =
     lockedCountry ||
     ({ IN: 'India', UK: 'UK', DE: 'Germany', BR: 'Brazil' } as Record<string, string>)[countryParam] ||
@@ -142,6 +169,7 @@ export function ReviewPage() {
   const heldOut = countryNotInRun(review, countryName || null)
   const refreshReview = useAppStore((s) => s.refreshReview)
   const approveLine = useAppStore((s) => s.approveLine)
+  const rejectLine = useAppStore((s) => s.rejectLine)
   const unapproveLine = useAppStore((s) => s.unapproveLine)
   const signOff = useAppStore((s) => s.signOff)
   const askConfirm = useAppStore((s) => s.askConfirm)
@@ -170,8 +198,9 @@ export function ReviewPage() {
 
   const approvedCount = cards?.approved ?? 0
   const totalLines = reviewLines.length
-  const remaining = Math.max(0, totalLines - approvedCount)
-  const progress = totalLines ? Math.round((approvedCount / totalLines) * 100) : 0
+  const rejectedCount = reviewLines.filter((line) => line.rejected).length
+  const remaining = Math.max(0, totalLines - approvedCount - rejectedCount)
+  const progress = totalLines ? Math.round(((approvedCount + rejectedCount) / totalLines) * 100) : 0
   const cycleMonth = (overview?.cycle.label || 'Payroll').replace(/\s*\d{4}\s*/, '').trim() || 'Payroll'
   const employeesInRun = countryName
     ? (overview?.countries.find((row) => row.country === countryName)?.employeeCount ?? 0)
@@ -239,8 +268,29 @@ export function ReviewPage() {
     })
   }
 
+  function openRejectLine(line: ReviewLineDto) {
+    askConfirm({
+      title: 'Reject line',
+      body: `Reject ${line.employeeName}'s change (${line.changeSummary})? Old base pay is deposited. This is not a missed payment and not an incorrect payment.`,
+      confirmLabel: 'Reject',
+      onConfirm: async () => {
+        setConfirmBusy(true)
+        setConfirmError(null)
+        try {
+          await rejectLine(line.id)
+          cancelConfirm()
+          pushToast(`Rejected ${line.employeeName} · old base pay`)
+        } catch (err) {
+          setConfirmError(err instanceof Error ? err.message : 'Could not reject line')
+        } finally {
+          setConfirmBusy(false)
+        }
+      },
+    })
+  }
+
   function applyLlmApproves() {
-    const targets = reviewLines.filter((l) => !l.approved && l.llmDecision?.recommend === 'approve')
+    const targets = reviewLines.filter((l) => !l.approved && !l.rejected && l.llmDecision?.recommend === 'approve')
     if (!targets.length) {
       pushToast('LLM did not recommend any lines to approve')
       return
@@ -332,6 +382,7 @@ export function ReviewPage() {
           </label>
         }
       />
+      <FinalReportNote />
       {review.signoff?.reopened ? (
         <p className="rounded border border-status-warn-border bg-status-warn-bg px-3 py-2 text-xs text-status-warn-text">
           {review.signoff.reopenedNote || 'Payroll approval reopened – 1 line changed'}
@@ -507,6 +558,7 @@ export function ReviewPage() {
                     muted={muted}
                     nextLabel={nextLabel}
                     onApprove={() => openApproveLine(line)}
+                    onReject={() => openRejectLine(line)}
                     onUndo={() => void unapproveLine(line.id)}
                   />
                 </td>
@@ -526,7 +578,9 @@ export function ReviewPage() {
                 <p className="text-[13px] font-medium text-text-primary">
                   {totalLines === 0
                     ? 'No issues'
-                    : `${approvedCount} of ${totalLines} lines approved`}
+                    : rejectedCount
+                      ? `${approvedCount} approved · ${rejectedCount} rejected · ${remaining} still open`
+                      : `${approvedCount} of ${totalLines} lines approved`}
                 </p>
                 <div className="mt-1.5 h-1.5 w-full max-w-md overflow-hidden rounded-full bg-slate-200">
                   <div

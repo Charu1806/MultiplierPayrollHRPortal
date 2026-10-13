@@ -7,7 +7,7 @@ SQLite database for the Payroll Clarity prototype. All figures and names are **i
 | Entity | Count | Notes |
 |---|---|---|
 | Customer | Acme Tech · Workday | Fully onboarded |
-| Cycles | October 2026 – January 2027 | Engine: close the 22nd · final sync the 23rd · funding the 26th · submitted the 27th · pay the 29th. Display milestones repeat the 15th, 16th–19th, 21st, 22nd, 24th–27th, and pay day in whichever month is open |
+| Cycles | October 2026 – January 2027 | Engine: close the 22nd · final sync the 23rd · funding the 26th · submitted the 28th · pay the 29th. Display milestones repeat the 15th, 16th–19th, 20th, 22nd, funding the 23rd–27th, payroll submitted on the 28th of the pay month, and pay day in whichever month is open |
 | **Employees** | **120** | Already onboarded (`date_added` NULL, `is_new` 0) |
 | — India | 50 | Currency `₹` · Sept net bands |
 | — UK | 30 | Currency `£` |

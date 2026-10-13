@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowRight, Bell, Mail, MessageSquare } from 'lucide-react'
+import { ArrowRight, Bell, Mail, MessageSquare, Phone } from 'lucide-react'
 import { Button, EmptyState, PageHeader, StatusChip } from '@/components'
 import { formatIsoDate } from '@/features/payroll/lib/labels'
 import { notificationVisible } from '@/features/persona'
@@ -10,9 +10,9 @@ import type { NotificationListItem } from '@/api/types'
 type RecipientFilter = 'all' | 'hr' | 'finance' | 'employees'
 
 function recipientBucket(item: NotificationListItem): RecipientFilter | 'other' {
+  if (item.audience === 'finance' || item.kind === 'funding_confirm' || item.recipient === 'Finance') return 'finance'
   if (item.recipient === 'HR admin') return 'hr'
-  if (item.recipient === 'Finance') return 'finance'
-  if (item.kind?.startsWith('employee_reminder')) return 'employees'
+  if (item.kind?.startsWith('employee_reminder') || item.kind?.startsWith('payroll_on_track')) return 'employees'
   return 'employees'
 }
 
@@ -95,7 +95,9 @@ export function NotificationsPage() {
   const company = useAppStore((s) => s.company)
   const selected = useAppStore((s) => s.selectedNotification)
   const loadNotification = useAppStore((s) => s.loadNotification)
+  const confirmFunding = useAppStore((s) => s.confirmFunding)
   const pushToast = useAppStore((s) => s.pushToast)
+  const [confirming, setConfirming] = useState<'yes' | 'no' | null>(null)
   const [recipientFilter, setRecipientFilter] = useState<RecipientFilter>('all')
 
   const inbox = useMemo(() => {
@@ -141,7 +143,7 @@ export function NotificationsPage() {
     <div>
       <PageHeader
         title="Notifications"
-        subtitle="Reminder-first: one grouped email per nudge · Slack arrives in V2 · In-app alerts arrive in V3"
+        subtitle="Reminder-first: one grouped email per nudge · AI Voice call and Slack arrive in V2 · In-app alerts arrive in V3"
       />
 
       <div className="mb-3 flex items-center gap-1 border-b border-border">
@@ -160,6 +162,17 @@ export function NotificationsPage() {
             ].join(' ')}
           >
             {unreadCount > 0 ? unreadCount : inbox.length}
+          </span>
+        </button>
+        <button
+          type="button"
+          className="flex items-center gap-1.5 px-3 py-2 text-[13px] text-text-muted opacity-60"
+          onClick={() => pushToast('AI Voice call is coming in V2')}
+        >
+          <Phone size={14} />
+          AI Voice call
+          <span className="rounded border border-border px-1 text-[10px] font-medium">
+            V2
           </span>
         </button>
         <button
@@ -311,6 +324,43 @@ export function NotificationsPage() {
                     attachments needed.
                   </p>
 
+                  {selected.fundingConfirm ? (
+                    <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
+                      <Button
+                        variant={selected.fundingConfirm.decision === 'yes' ? 'primary' : 'secondary'}
+                        data-testid="funding-yes"
+                        disabled={confirming !== null}
+                        onClick={() => {
+                          const cycleKey = selected.fundingConfirm?.cycleKey
+                          if (!cycleKey) return
+                          setConfirming('yes')
+                          void confirmFunding('yes', cycleKey).finally(() => setConfirming(null))
+                        }}
+                      >
+                        Yes
+                      </Button>
+                      <Button
+                        variant={selected.fundingConfirm.decision === 'no' ? 'primary' : 'secondary'}
+                        data-testid="funding-no"
+                        disabled={confirming !== null}
+                        onClick={() => {
+                          const cycleKey = selected.fundingConfirm?.cycleKey
+                          if (!cycleKey) return
+                          setConfirming('no')
+                          void confirmFunding('no', cycleKey).finally(() => setConfirming(null))
+                        }}
+                      >
+                        No
+                      </Button>
+                      <span className="text-[11px] text-text-muted">
+                        {selected.fundingConfirm.fundsAddedOn
+                          ? `Funds added ${formatIsoDate(selected.fundingConfirm.fundsAddedOn)}`
+                          : selected.fundingConfirm.decision === 'no'
+                            ? 'Funds are not added'
+                            : 'Yes adds the funds today. No leaves them unadded.'}
+                      </span>
+                    </div>
+                  ) : (
                   <div className="flex items-center gap-3 border-t border-border pt-4">
                     <Button
                       variant="primary"
@@ -327,6 +377,7 @@ export function NotificationsPage() {
                           : 'Opens the Payroll tab inside your HR tool'}
                     </span>
                   </div>
+                  )}
                 </div>
               </>
             ) : (

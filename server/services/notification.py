@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -23,15 +24,52 @@ from domain.issues import open_issues  # noqa: E402
 from domain.notifications import emails_visible_on  # noqa: E402
 
 from server.db.repositories import Store  # noqa: E402
-from server.services import rules as rules_svc  # noqa: E402
+from server.services import rules as rules_svc
+from server.services.email_smtp import employee_details_mail  # noqa: E402
 
 TEMPLATES = seed_config()["emailTemplates"]
+
+
+_SAVED_REMIND_LABEL = re.compile(
+    r"^Add your (?P<label>.+?)(?:"
+    r" for payroll\b.*|"
+    r" or this payment will be missed"
+    r")$"
+)
+
+
+def _details_deadline(send_date: str) -> tuple:
+    cycle = cycle_dates(send_date)
+    month = str(cycle.get("label") or "This").split()[0]
+    deadline = short_date(parse_date(cycle["payDate"]).replace(day=15))
+    return deadline, month
+
+
+def present_employee_reminder(row: Dict[str, Any]) -> tuple:
+    """Show saved missing-details mail with the deadline and the month's payroll."""
+    subject = row.get("subject") or ""
+    body = row.get("body_summary") or ""
+    match = _SAVED_REMIND_LABEL.match(subject)
+    if not match or not row.get("send_date"):
+        return subject, body
+    deadline, month = _details_deadline(row["send_date"])
+    first = str(row.get("recipient") or "there").split()[0]
+    return employee_details_mail(
+        first=first,
+        label=match.group("label"),
+        deadline=deadline,
+        month=month,
+    )
 
 
 def _delivery_from_kind(kind: Optional[str]) -> Optional[str]:
     if kind == "employee_reminder_undelivered":
         return "not_sent_smtp_missing"
     if kind == "employee_reminder":
+        return "sent"
+    if kind == "payroll_on_track_undelivered":
+        return "not_sent_smtp_missing"
+    if kind == "payroll_on_track":
         return "sent"
     return None
 
@@ -166,7 +204,7 @@ def _signed_off(store: Store, cycle: Dict[str, Any], as_of: str) -> bool:
 
 def _remaining_lines(store: Store, cycle_id: str, as_of: str) -> int:
     lines = store.review_lines(cycle_id, as_of=as_of)
-    return sum(1 for r in lines if not store.line_approval(r["id"], as_of))
+    return sum(1 for r in lines if not store.line_decision(r["id"], as_of))
 
 
 def _computed(store: Store, customer_id: str, as_of: str) -> List[Dict[str, Any]]:
@@ -352,41 +390,50 @@ def _month_day(cycle: Dict[str, Any], day: int) -> str:
     return pay.replace(day=day).isoformat()
 
 
+_MISS_KINDS = {"missing_fields", "missing_data"}
+
+
 def _miss_snapshot(store: Store, customer_id: str, as_of: str) -> Dict[str, Dict[str, Any]]:
-    """Distinct people who will miss pay: open actions or an unapproved review line."""
+    """Missing details miss pay. An open review change does not; old base pay is used."""
     cycle = store.get_current_cycle(customer_id)
     by_country: Dict[str, Dict[str, Any]] = {}
 
     def bucket(country: str) -> Dict[str, Any]:
-        row = by_country.setdefault(country, {"actions": 0, "approvals": 0, "people": set()})
+        row = by_country.setdefault(
+            country, {"actions": 0, "approvals": 0, "people": set(), "miss": set(), "wrong": set()}
+        )
         return row
 
     if not cycle:
         return {}
     for issue in _open_actions(store, cycle["id"], as_of):
+        if (issue.get("kind") or "missing_fields") not in _MISS_KINDS:
+            continue
         country = issue.get("country") or "Unknown"
         row = bucket(country)
         row["actions"] += 1
         if issue.get("employee_id"):
             row["people"].add(issue["employee_id"])
+            row["miss"].add(issue["employee_id"])
     for line in store.review_lines(cycle["id"], as_of=as_of):
-        if store.line_approval(line["id"], as_of):
+        if store.line_decision(line["id"], as_of):
             continue
         country = line.get("country") or "Unknown"
         row = bucket(country)
         row["approvals"] += 1
         if line.get("employee_id"):
             row["people"].add(line["employee_id"])
+            row["wrong"].add(line["employee_id"])
     return by_country
 
 
-_EMPTY_MISS = {"actions": 0, "approvals": 0, "people": set()}
+_EMPTY_MISS = {"actions": 0, "approvals": 0, "people": set(), "miss": set(), "wrong": set()}
 _IGNORE = "You can ignore this if nothing is still open."
 _IGNORE_FUNDS = "You can ignore this if funds are already in."
 
 
 def _will_miss(store: Store, customer_id: str, as_of: str) -> Dict[str, Dict[str, Any]]:
-    """People who will miss this cycle, with a short reason."""
+    """People who will miss this cycle because details are missing."""
     cycle = store.get_current_cycle(customer_id)
     people: Dict[str, Dict[str, Any]] = {}
     if not cycle:
@@ -403,29 +450,45 @@ def _will_miss(store: Store, customer_id: str, as_of: str) -> Dict[str, Dict[str
         emp_id = issue.get("employee_id")
         if not emp_id:
             continue
+        if (issue.get("kind") or "missing_fields") not in _MISS_KINDS:
+            continue
         emp = store.get_employee(emp_id) or {}
         row = slot(emp_id, issue.get("country") or emp.get("country") or "", emp.get("name") or "")
         title = issue.get("title")
         if title and title not in row["reasons"]:
             row["reasons"].append(title)
+    return people
+
+
+def _wrong_pay(store: Store, customer_id: str, as_of: str) -> Dict[str, Dict[str, Any]]:
+    """Open review changes. These people are paid, but not at the new amount."""
+    cycle = store.get_current_cycle(customer_id)
+    people: Dict[str, Dict[str, Any]] = {}
+    if not cycle:
+        return people
     for line in store.review_lines(cycle["id"], as_of=as_of):
-        if store.line_approval(line["id"], as_of):
+        if store.line_decision(line["id"], as_of):
             continue
         emp_id = line.get("employee_id")
         if not emp_id:
             continue
         emp = store.get_employee(emp_id) or {}
-        row = slot(emp_id, line.get("country") or emp.get("country") or "", emp.get("name") or line.get("employee_name") or "")
-        if "awaiting approval" not in row["reasons"]:
-            row["reasons"].append("awaiting approval")
+        people[emp_id] = {
+            "id": emp_id,
+            "name": emp.get("name") or line.get("employee_name") or "Employee",
+            "country": line.get("country") or emp.get("country") or "Unknown",
+            "reasons": ["change not approved, old base pay is used"],
+        }
     return people
 
 
 def _forecast_text(store: Store, customer_id: str, as_of: str, country: Optional[str] = None) -> str:
     """How many are on track to be paid, and who will miss, with why."""
     missed = list(_will_miss(store, customer_id, as_of).values())
+    wrong = list(_wrong_pay(store, customer_id, as_of).values())
     if country:
         missed = [person for person in missed if person["country"] == country]
+        wrong = [person for person in wrong if person["country"] == country]
     missed_ids = {person["id"] for person in missed}
     roster = [
         emp
@@ -434,17 +497,22 @@ def _forecast_text(store: Store, customer_id: str, as_of: str, country: Optional
     ]
     on_track = sum(1 for emp in roster if emp["id"] not in missed_ids)
     miss_n = len(missed)
+    wrong_n = len(wrong)
+    scope = "" if country else " across all countries"
     paid_line = (
-        f"{on_track} will be paid. {miss_n} will miss payment."
-        if country
-        else f"{on_track} will be paid across all countries. {miss_n} will miss payment."
+        f"{on_track} will be paid{scope}. {miss_n} will miss payment because details are missing. "
+        f"{wrong_n} will not get the right payment. A change still in review uses old base pay."
     )
-    if miss_n == 0:
-        return f"{paid_line}\n\nNo one will miss payment."
     lines = [
-        f"{person['name']} — {', '.join(person['reasons']) or 'still open'}"
+        f"{person['name']} — missing details"
         for person in sorted(missed, key=lambda person: (person["country"], person["name"]))
     ]
+    lines.extend(
+        f"{person['name']} — will not get the right payment"
+        for person in sorted(wrong, key=lambda person: (person["country"], person["name"]))
+    )
+    if not lines:
+        return f"{paid_line}\n\nNo one will miss payment."
     return paid_line + "\n\n" + "\n".join(lines)
 
 
@@ -452,8 +520,8 @@ def _actual_text(outcomes: Dict[str, Any], country: Optional[str] = None) -> str
     """How many were paid, and who missed, with why."""
     by_country = outcomes.get("byCountry") or {}
     reasons = (
-        ("missingInputs", "missing details"),
-        ("paidPreviousSalary", "awaiting approval"),
+        ("missingInputs", "missing details, missed payment"),
+        ("paidPreviousSalary", "did not get the right payment"),
         ("addedAfterCutoff", "added after the window closed"),
         ("paymentReturned", "payment returned"),
     )
@@ -471,37 +539,57 @@ def _actual_text(outcomes: Dict[str, Any], country: Optional[str] = None) -> str
         row = by_country.get(country) or {}
         paid = int(row.get("paid") or 0)
         lines = named(country)
+        missed_lines = [line for line in lines if "missed payment" in line or "missing details" in line]
+        wrong_lines = [line for line in lines if line not in missed_lines]
         if not lines:
             return f"{paid} were paid. No one missed payment."
-        return f"{paid} were paid. {len(lines)} missed payment.\n\n" + "\n".join(lines)
+        parts = [f"{paid} were paid."]
+        if missed_lines:
+            parts.append(f"{len(missed_lines)} missed payment because details were missing.")
+        if wrong_lines:
+            parts.append(f"{len(wrong_lines)} did not get the right payment.")
+        return " ".join(parts) + "\n\n" + "\n".join(lines)
 
     paid = int((outcomes.get("paidSuccessfully") or {}).get("count") or 0)
     blocks = []
     missed_total = 0
+    wrong_total = 0
     for country_name in ("India", "UK", "Germany", "Brazil"):
         lines = named(country_name)
-        missed_total += len(lines)
+        missed_lines = [line for line in lines if "missed payment" in line]
+        wrong_lines = [line for line in lines if "right payment" in line]
+        missed_total += len(missed_lines)
+        wrong_total += len(wrong_lines)
         row = by_country.get(country_name) or {}
         paid_n = int(row.get("paid") or 0)
-        if lines:
-            blocks.append(f"{country_name}: {paid_n} paid. {len(lines)} missed.\n" + "\n".join(lines))
-        else:
-            blocks.append(f"{country_name}: {paid_n} paid. No one missed payment.")
+        bits = [f"{country_name}: {paid_n} paid."]
+        if missed_lines:
+            bits.append(f"{len(missed_lines)} missed payment because details were missing.")
+        if wrong_lines:
+            bits.append(f"{len(wrong_lines)} did not get the right payment.")
+        if not missed_lines and not wrong_lines and not lines:
+            bits.append("No one missed payment.")
+        blocks.append(" ".join(bits) + ("\n" + "\n".join(lines) if lines else ""))
     return (
-        f"{paid} were paid. {missed_total} missed payment.\n\n"
+        f"{paid} were paid. {missed_total} missed payment because details were missing. "
+        f"{wrong_total} did not get the right payment.\n\n"
         + "\n\n".join(blocks)
     )
 
 
 def _pending_line(row: Dict[str, Any], country: str) -> str:
-    count = len(row.get("people") or [])
-    if count == 0:
+    miss_n = len(row.get("miss") or [])
+    wrong_n = len(row.get("wrong") or [])
+    if miss_n == 0 and wrong_n == 0:
         return f"Nothing is open for {country}."
-    people = "1 employee" if count == 1 else f"{count} employees"
-    return (
-        f"{people} will miss this cycle if not fixed: "
-        f"{row['actions']} action needed, {row['approvals']} approval pending."
-    )
+    parts = []
+    if miss_n:
+        people = "1 employee" if miss_n == 1 else f"{miss_n} employees"
+        parts.append(f"{people} will miss payment because details are missing.")
+    if wrong_n:
+        people = "1 employee" if wrong_n == 1 else f"{wrong_n} employees"
+        parts.append(f"{people} will not get the right payment. Old base pay is used until the change is approved.")
+    return " ".join(parts)
 
 
 def _persona_reports(store: Store, customer_id: str, as_of: str) -> List[Dict[str, Any]]:
@@ -540,6 +628,9 @@ def _persona_reports(store: Store, customer_id: str, as_of: str) -> List[Dict[st
         cc: Optional[str],
         href: str,
         cta_label: str,
+        kind: str = "persona_report",
+        cycle_key: Optional[str] = None,
+        action_count: int = 0,
     ) -> None:
         if parse_date(send_date) > today:
             return
@@ -551,15 +642,16 @@ def _persona_reports(store: Store, customer_id: str, as_of: str) -> List[Dict[st
                 "channel": "email",
                 "subject": subject,
                 "body_summary": body,
-                "action_count": 0,
+                "action_count": action_count,
                 "actions": [],
                 "policy": None,
                 "cta": {"label": cta_label, "href": href},
-                "kind": "persona_report",
+                "kind": kind,
                 "computed": True,
                 "audience": audience,
                 "country": country,
                 "cc": cc,
+                "cycle_key": cycle_key,
             }
         )
 
@@ -577,19 +669,38 @@ def _persona_reports(store: Store, customer_id: str, as_of: str) -> List[Dict[st
 
     for cycle in cycles:
         month = str(cycle.get("label") or "").split()[0] or "This cycle"
-        day = {n: _month_day(cycle, n) for n in (3, 10, 13, 14, 15, 16, 18, 19, 20, 21, 22, 23, 25, 26, 30)}
+        day = {n: _month_day(cycle, n) for n in (3, 10, 13, 14, 15, 16, 18, 19, 20, 21, 22, 23, 25, 26, 27, 28, 30)}
         pay_day = str(cycle.get("payDate") or _month_day(cycle, 29))
-        d15, d16, d19, d22, d26 = (short_date(day[n]) for n in (15, 16, 19, 22, 26))
+        submitted_on = _month_day(cycle, 28)
+        d15, d16, d19, d20, d22, d23, d27 = (short_date(day[n]) for n in (15, 16, 19, 20, 22, 23, 27))
         pay_label = short_date(pay_day)
+        submitted_label = short_date(submitted_on)
+        cycle_key = str(cycle.get("key") or "")
+
+        def funds_line(when: str) -> str:
+            from server.services.funding import funding_decision_view
+
+            view = funding_decision_view(store, customer_id, cycle_key, when)
+            if view.get("fundsAddedOn"):
+                return f"Funds added: Yes, on {short_date(view['fundsAddedOn'])}."
+            if view.get("decision") == "no":
+                return (
+                    f"Funds added: No. {finance_name} confirmed on {short_date(view['decidedOn'])} "
+                    f"that funds are not added."
+                )
+            return f"Funds added: No. {finance_name} has not confirmed the funds."
 
         def schedule_notes() -> str:
             return (
                 f"Add employees, bonuses, and hikes, and resolve missing details by {d15}. "
                 f"People added after {d15} move to next month.\n"
                 f"Review and approve from {d16} to {d19}.\n"
-                f"{global_name} reviews the report from {d19} to {d22}.\n"
-                f"{d22} is the last day for missing details and approvals. "
-                f"Changes after {d22} apply next month."
+                f"The final report is on {d20}. It goes to {global_name} and each country HR admin.\n"
+                f"Review close is {d22}, seven days before pay day, a deadline set by Multiplier. "
+                f"Changes after {d22} apply next month.\n"
+                f"The funding window is {d23} to {d27}. You set that window.\n"
+                f"Payroll is submitted on {submitted_label}, the 28th of the pay month.\n"
+                f"Pay day is {pay_label}. You set pay day."
             )
 
         for admin in admins:
@@ -681,7 +792,7 @@ def _persona_reports(store: Store, customer_id: str, as_of: str) -> List[Dict[st
                     f"Hello {hello},\n\n"
                     f"The window for new employees has closed. Joiners added from today move to next month.\n\n"
                     f"Please review and approve {country} pay by {d19}. "
-                    f"After that, {global_name} receives the full report.\n\n"
+                    f"The final report is on {d20}, for you and {global_name}.\n\n"
                     f"{_pending_line(row16, country)}"
                 ),
                 audience="country",
@@ -695,13 +806,13 @@ def _persona_reports(store: Store, customer_id: str, as_of: str) -> List[Dict[st
                     18,
                     f"{country}: please review before {d19}",
                     f"The {country} review window closes tomorrow, {d19}. "
-                    f"Please approve any open lines before then. After {d19}, {global_name} receives the full report.",
+                    f"Please approve any open lines before then. The final report is on {d20}.",
                 ),
                 (
                     19,
                     f"{country}: review closes today",
                     f"Today is the last day of the {country} review window. "
-                    f"Please close any open approvals today. {global_name} receives the report after this.",
+                    f"Please close any open approvals today. The final report is tomorrow, {d20}.",
                 ),
             ):
                 row = snap(day[num]).get(country) or _EMPTY_MISS
@@ -722,7 +833,7 @@ def _persona_reports(store: Store, customer_id: str, as_of: str) -> List[Dict[st
                 (
                     20,
                     f"{country}: report for {global_name}",
-                    f"The review window has closed. {global_name} is copied here with the current report.\n\n"
+                    f"Today, {d20}, is the final report. {global_name} is copied here.\n\n"
                     f"You can still add inputs until {d22}. Anything after {d22} applies next month.",
                 ),
                 (
@@ -758,10 +869,11 @@ def _persona_reports(store: Store, customer_id: str, as_of: str) -> List[Dict[st
                 mail_id=f"notif_country_{admin['code']}_{day[23]}",
                 send_date=day[23],
                 recipient=who,
-                subject=f"{country}: please ask {finance_name} to add funds by {d26}",
+                subject=f"{country}: please ask {finance_name} to add funds by {d27}",
                 body=(
                     f"Hello {hello},\n\n"
-                    f"Please ask {finance_name} to add funds by {d26} so {month} payroll can be submitted."
+                    f"The funding window is {d23} to {d27}. "
+                    f"Please ask {finance_name} to add funds by {d27} so {month} payroll can be submitted."
                 ),
                 audience="country",
                 country=country,
@@ -787,19 +899,22 @@ def _persona_reports(store: Store, customer_id: str, as_of: str) -> List[Dict[st
                     href="/payroll/overview#miss-details",
                     cta_label="Open overview",
                 )
-            for num, subject, lead in (
-                (
-                    25,
-                    f"{country}: funds due {d26}",
-                    f"{finance_name} still needs to add funds by tomorrow, {d26}. {global_name} is copied on this note.",
-                ),
+            for num, subject, waiting in (
                 (
                     26,
+                    f"{country}: funds due {d27}",
+                    f"{finance_name} still needs to add funds by tomorrow, {d27}. {global_name} is copied on this note.",
+                ),
+                (
+                    27,
                     f"{country}: funds are due today",
-                    f"Today is the last day for {finance_name} to add funds. {global_name} is copied on this note. "
-                    f"Payroll is submitted once the funds are in.",
+                    f"Today is the last day of the funding window for {finance_name} to add funds. "
+                    f"{global_name} is copied on this note. "
+                    f"Payroll is submitted on {submitted_label}, the 28th of the pay month.",
                 ),
             ):
+                added = funds_line(day[num])
+                lead = added if added.startswith("Funds added: Yes") else f"{waiting}\n\n{added}"
                 mail(
                     mail_id=f"notif_country_{admin['code']}_{day[num]}",
                     send_date=day[num],
@@ -816,20 +931,32 @@ def _persona_reports(store: Store, customer_id: str, as_of: str) -> List[Dict[st
         leader = global_name.split()[0]
 
         def glance(when: str) -> str:
-            total = 0
-            open_bits = []
+            miss_bits = []
+            wrong_bits = []
+            miss_n = 0
+            wrong_n = 0
             for admin in admins:
                 row = snap(when).get(admin["country"]) or _EMPTY_MISS
-                count = len(row["people"])
-                total += count
-                if count:
-                    open_bits.append(f"{admin['country']} {count}")
-            if total == 0:
+                missed = len(row.get("miss") or [])
+                wrong = len(row.get("wrong") or [])
+                miss_n += missed
+                wrong_n += wrong
+                if missed:
+                    miss_bits.append(f"{admin['country']} {missed}")
+                if wrong:
+                    wrong_bits.append(f"{admin['country']} {wrong}")
+            if miss_n == 0 and wrong_n == 0:
                 return "Nothing is open."
-            return (
-                f"{total} will miss payment if not fixed ({', '.join(open_bits)}). "
-                "Full details are on the overview."
-            )
+            parts = []
+            if miss_n:
+                parts.append(
+                    f"{miss_n} will miss payment because details are missing ({', '.join(miss_bits)})."
+                )
+            if wrong_n:
+                parts.append(
+                    f"{wrong_n} will not get the right payment ({', '.join(wrong_bits)}). Old base pay is used."
+                )
+            return " ".join(parts) + " Full details are on the overview."
 
         def global_mail(num: int, subject: str, body: str) -> None:
             mail(
@@ -890,7 +1017,7 @@ def _persona_reports(store: Store, customer_id: str, as_of: str) -> List[Dict[st
             (
                 f"{_IGNORE}\n\n"
                 f"Hello {leader},\n\n"
-                f"This is the final report after review. You have 3 days, until {d22}, "
+                f"This is the final report on {d20}. You have until {d22} "
                 f"to work with each HR admin and close what is still open.\n\n"
                 f"{glance(day[20])}"
             ),
@@ -914,15 +1041,52 @@ def _persona_reports(store: Store, customer_id: str, as_of: str) -> List[Dict[st
             currency = fund.get("currency") or "USD"
             symbol = "$" if currency == "USD" else f"{currency} "
             fund_sentence = (
-                f"{finance_name} should have {symbol}{fund['required']:,.0f} with finance by {d26}."
+                f"{finance_name} should have {symbol}{fund['required']:,.0f} with finance by {d27}."
             )
+        finance_hello = finance_name.split()[0]
+        from server.services.funding import funding_decision_view
+
+        finance_view = funding_decision_view(store, customer_id, cycle_key, as_of)
+        if finance_view.get("fundsAddedOn"):
+            finance_status = (
+                f"You confirmed Yes on {short_date(finance_view['fundsAddedOn'])}. "
+                f"Funds were added on {short_date(finance_view['fundsAddedOn'])}."
+            )
+        elif finance_view.get("decision") == "no":
+            finance_status = (
+                f"You confirmed No on {short_date(finance_view['decidedOn'])}. Funds are not added."
+            )
+        else:
+            finance_status = "Yes adds the funds today. No leaves them unadded."
+        mail(
+            mail_id=f"notif_finance_{day[23]}",
+            send_date=day[23],
+            recipient=f"{finance_name}, Fund manager",
+            subject=f"{month}: please confirm funds are added",
+            body=(
+                f"Hello {finance_hello},\n\n"
+                f"Please confirm whether funds for {month} payroll are added.\n\n"
+                f"The funding window is {d23} to {d27}.\n"
+                f"{fund_sentence}\n\n"
+                f"{finance_status}"
+            ),
+            audience="finance",
+            country=None,
+            cc=None,
+            href="/payroll/overview",
+            cta_label="Open overview",
+            kind="funding_confirm",
+            cycle_key=cycle_key,
+            action_count=2,
+        )
         global_mail(
             23,
             f"{month}: funding period has started",
             (
                 f"{_IGNORE}\n\n"
                 f"Hello {leader},\n\n"
-                f"Review is closed. The funding period has started.\n\n"
+                f"Review close was {d22}, a deadline set by Multiplier. "
+                f"The funding window is {d23} to {d27}. You set that window.\n\n"
                 f"{fund_sentence}\n\n"
                 f"{glance(day[23])}"
             ),
@@ -951,18 +1115,64 @@ def _persona_reports(store: Store, customer_id: str, as_of: str) -> List[Dict[st
             (
                 f"{_IGNORE_FUNDS}\n\n"
                 f"Hello {leader},\n\n"
-                f"Funds added: Yes. {finance_name} has added the funds for {month}."
+                f"{funds_line(day[25])} {finance_name} is the fund manager for {month}."
             ),
         )
+        day26 = funds_line(day[26])
         global_mail(
             26,
+            f"{month}: one day left to add funds",
+            (
+                f"{_IGNORE_FUNDS}\n\n"
+                f"Hello {leader},\n\n"
+                f"The funding window closes tomorrow, {d27}. {day26}"
+            ),
+        )
+        day27 = funds_line(day[27])
+        global_mail(
+            27,
             f"{month}: last day to add funds",
             (
                 f"{_IGNORE_FUNDS}\n\n"
                 f"Hello {leader},\n\n"
-                f"Today is the last day to add funds. Funds added: Yes, so nothing further is needed."
+                f"Today is the last day to add funds. The window you set runs through {d27}. {day27}"
             ),
         )
+        if parse_date(submitted_on) <= today:
+            mail(
+                mail_id=f"notif_global_{submitted_on}_submitted",
+                send_date=submitted_on,
+                recipient=global_label,
+                subject=f"{month}: payroll submitted",
+                body=(
+                    f"Hello {leader},\n\n"
+                    f"Payroll was submitted on {submitted_label}, the 28th of the pay month. Pay day is {pay_label}. "
+                    f"Multiplier is calculating the payment."
+                ),
+                audience="global",
+                country=None,
+                cc=None,
+                href="/payroll/overview",
+                cta_label="Open overview",
+            )
+            for admin in admins:
+                mail(
+                    mail_id=f"notif_country_{admin['code']}_{submitted_on}_submitted",
+                    send_date=submitted_on,
+                    recipient=f"{admin['name']}, {admin['country']} HR admin",
+                    subject=f"{admin['country']}: {month} payroll submitted",
+                    body=(
+                        f"Hello {admin['name'].split()[0]},\n\n"
+                        f"{month} payroll was submitted on {submitted_label}, the 28th of the pay month. "
+                        f"Pay day is {pay_label}. "
+                        f"Multiplier is calculating the payment."
+                    ),
+                    audience="country",
+                    country=admin["country"],
+                    cc=global_label,
+                    href="/payroll/overview",
+                    cta_label="Open overview",
+                )
 
         if parse_date(pay_day) <= today:
             from server.services.sync import payday_outcomes
@@ -975,8 +1185,8 @@ def _persona_reports(store: Store, customer_id: str, as_of: str) -> List[Dict[st
                 paid = int(row.get("paid") or 0)
                 bits = []
                 for key, label in (
-                    ("missingInputs", "missing details"),
-                    ("paidPreviousSalary", "awaiting approval, paid at the previous salary"),
+                    ("missingInputs", "missed payment because details were missing"),
+                    ("paidPreviousSalary", "did not get the right payment, old base pay was used"),
                     ("addedAfterCutoff", "added after the window closed"),
                     ("paymentReturned", "payment returned"),
                 ):
@@ -1000,9 +1210,15 @@ def _persona_reports(store: Store, customer_id: str, as_of: str) -> List[Dict[st
                     ("addedAfterCutoff", ""),
                     ("paymentReturned", ""),
                 ))
+                missed = int((row.get("missingInputs") or {}).get("count") or 0)
+                wrong = int((row.get("paidPreviousSalary") or {}).get("count") or 0)
                 if moved == 0:
-                    return f"{country_name}: {paid} paid. None moved to the next cycle."
-                return f"{country_name}: {paid} paid. {moved} moved to the next cycle — {'; '.join(bits)}."
+                    return f"{country_name}: {paid} paid. No one missed payment."
+                return (
+                    f"{country_name}: {paid} paid. {missed} missed payment because details were missing. "
+                    f"{wrong} did not get the right payment; that difference moves to the next cycle"
+                    + (f" — {'; '.join(bits)}." if bits else ".")
+                )
 
             paid_total = 0
             affected_total = 0
@@ -1110,52 +1326,96 @@ def _persona_reports(store: Store, customer_id: str, as_of: str) -> List[Dict[st
                 if (issue.get("kind") or "") in ("missing_fields", "missing_data") and issue.get("employee_id")
             }
         )
-        steps = (
-            (
-                10,
-                f"Please add your details by {d15}",
-                "Please add your missing payroll details by {deadline}. If they are still missing, you will miss payment this cycle.",
-            ),
-            (
-                13,
-                f"2 days left to add your details",
-                "Two days left. Please add your missing details by {deadline}, or you will miss payment this cycle.",
-            ),
-            (
-                14,
-                f"Please add your details by tomorrow",
-                "Tomorrow is the last day. Please add your missing details by {deadline}, or you will miss payment this cycle.",
-            ),
-            (
-                15,
-                f"Today is the last day to add your details",
-                "Today is the last day. Please add your missing details today, or you will miss payment this cycle.",
-            ),
-        )
+        when_notes = {
+            10: "",
+            13: "2 days left",
+            14: "tomorrow",
+            15: "today is the last day",
+        }
         for employee_id in missing_ids:
             emp = store.get_employee(employee_id)
             if not emp:
                 continue
-            for num, subject, template in steps:
+            missing = store.missing_fields(employee_id, as_of)
+            owned = rules_svc.split_owned(missing).get("employee") or []
+            label = rules_svc.sentence_fields(owned) if owned else "missing details"
+            first = emp["name"].split()[0]
+            for num, when_note in when_notes.items():
+                subject, body = employee_details_mail(
+                    first=first,
+                    label=label,
+                    deadline=d15,
+                    month=month,
+                    when_note=when_note,
+                )
                 mail(
                     mail_id=f"notif_emp_{employee_id}_{day[num]}",
                     send_date=day[num],
                     recipient=emp["name"],
                     subject=subject,
-                    body=f"Hello {emp['name'].split()[0]},\n\n{template.format(deadline=d15)}",
+                    body=body,
                     audience="employee",
                     country=emp.get("country"),
                     cc=None,
                     href=f"/people/{employee_id}?panel=missing#missing-details",
-                    cta_label="Add your details",
+                    cta_label="Add my details",
                 )
     return reports
 
 
+def notify_payroll_on_track(
+    store: Store,
+    emp: Dict[str, Any],
+    *,
+    as_of: str,
+    label: str,
+    month: Optional[str] = None,
+) -> None:
+    """Email the employee once their details put that pay month on track."""
+    from server.services import email_smtp
+
+    cycle = cycle_dates(as_of)
+    month = month or str(cycle.get("label") or "This").split()[0]
+    first = str(emp.get("name") or "there").split()[0]
+    what = label or "details"
+    subject = f"Thanks for adding your details. {month} payroll is on track."
+    body = (
+        f"Hi {first},\n\n"
+        f"Thanks for adding your details. {month} payroll is on track.\n\n"
+        f"What: your {what}.\n"
+        f"Why: {month} payroll is on track.\n"
+        f"You don't need to reply to this email."
+    )
+    kind = "payroll_on_track"
+    if email_smtp.smtp_configured():
+        sent = email_smtp.send_employee_note(
+            to_address=email_smtp.demo_personal_email(emp["name"], emp.get("personal_email")),
+            subject=subject,
+            text=body,
+        )
+        if not sent.get("sent"):
+            kind = "payroll_on_track_undelivered"
+    db_cycle = store.get_current_cycle(emp["customer_id"])
+    if not db_cycle:
+        return
+    store.add_notification(
+        db_cycle["id"],
+        send_date=as_of,
+        recipient=emp["name"],
+        recipient_employee_id=emp["id"],
+        subject=subject,
+        body_summary=body,
+        actions=[],
+        cta_label="View employee",
+        cta_href=f"/people/{emp['id']}",
+        kind=kind,
+    )
+
+
 def _stored_audience(store: Store, row: Dict[str, Any]) -> tuple:
-    """Employee reminders belong in that country's inbox, and in Global's."""
+    """Employee mail belongs in that country's inbox, and in Global's."""
     kind = str(row.get("kind") or "")
-    if not kind.startswith("employee_reminder"):
+    if not (kind.startswith("employee_reminder") or kind.startswith("payroll_on_track")):
         return None, None
     emp_id = row.get("recipient_employee_id")
     emp = store.get_employee(emp_id) if emp_id else None
@@ -1173,14 +1433,19 @@ def list_notifications(
         if n.get("kind") == "details_confirmed":
             continue
         audience, country = _stored_audience(store, n)
+        subject, body = (
+            present_employee_reminder(n)
+            if str(n.get("kind") or "").startswith("employee_reminder")
+            else (n["subject"], n.get("body_summary"))
+        )
         stored.append(
             {
                 "id": n["id"],
                 "send_date": n["send_date"],
                 "recipient": n["recipient"],
                 "channel": n.get("channel", "email"),
-                "subject": n["subject"],
-                "body_summary": n.get("body_summary"),
+                "subject": subject,
+                "body_summary": body,
                 "action_count": n.get("action_count"),
                 "cta_label": n.get("cta_label"),
                 "cta_href": n.get("cta_href"),
@@ -1225,6 +1490,17 @@ def get_notification(store: Store, notification_id: str, customer_id: str, as_of
     return detail
 
 
+def _funding_confirm(
+    store: Store, customer_id: str, as_of: str, row: Dict[str, Any]
+) -> Optional[Dict[str, Any]]:
+    if row.get("kind") != "funding_confirm":
+        return None
+    from server.services.funding import funding_decision_view
+
+    key = row.get("cycle_key") or cycle_dates(as_of).get("key") or ""
+    return funding_decision_view(store, customer_id, str(key), as_of)
+
+
 def _notification_detail(store: Store, notification_id: str, customer_id: str, as_of: str) -> Dict[str, Any]:
     stored = store.get_notification(notification_id)
     if stored:
@@ -1245,13 +1521,18 @@ def _notification_detail(store: Store, notification_id: str, customer_id: str, a
             and (cta_href.startswith("/form/") or "panel=missing" not in cta_href)
         ):
             cta_href = f"/people/{emp_id}?panel=missing#missing-details"
+        subject, body = (
+            present_employee_reminder(stored)
+            if str(kind or "").startswith("employee_reminder")
+            else (stored["subject"], stored.get("body_summary"))
+        )
         return {
             "id": stored["id"],
             "sendDate": stored["send_date"],
             "recipient": stored["recipient"],
             "channel": stored.get("channel", "email"),
-            "subject": stored["subject"],
-            "bodySummary": stored.get("body_summary"),
+            "subject": subject,
+            "bodySummary": body,
             "actionCount": stored.get("action_count"),
             "actions": actions,
             "cta": {
@@ -1282,5 +1563,6 @@ def _notification_detail(store: Store, notification_id: str, customer_id: str, a
                 "audience": n.get("audience"),
                 "country": n.get("country"),
                 "delivery": _delivery_from_kind(n.get("kind")),
+                "fundingConfirm": _funding_confirm(store, customer_id, as_of, n),
             }
     raise LookupError("notification_not_found")

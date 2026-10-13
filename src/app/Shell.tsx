@@ -5,7 +5,7 @@ import { BreadcrumbBar } from '@/components/Breadcrumb'
 import { ConfirmModal, NoticeModal, ToastStack } from '@/components'
 import { DatePicker } from '@/components/DatePicker'
 import { MultiplierLogo } from '@/components/MultiplierLogo'
-import { formatIsoDate, formatJourneyAt } from '@/features/payroll/lib/labels'
+import { formatJourneyAt } from '@/features/payroll/lib/labels'
 import { countryAdmins, notificationVisible, personaCountry } from '@/features/persona'
 import { useAppStore, type PrototypeDate } from '@/store'
 
@@ -22,7 +22,6 @@ const payrollNav = [
 
 const stubNav = [
   { label: 'AI assistant', tag: 'V2', note: 'Planned for V2' },
-  { label: 'AI assisted voice call', tag: 'V2', note: 'Planned for V2' },
   { label: 'Finance view', tag: 'V3', note: 'Planned for V3' },
   { label: 'Employee payroll tool', tag: 'V3', note: 'Planned for V3' },
 ]
@@ -81,7 +80,6 @@ export function Shell() {
   const isNotifications = location.pathname.startsWith('/people/notifications')
   const isPayroll = location.pathname.startsWith('/payroll')
   const isPeopleList = location.pathname.startsWith('/people') && !isNotifications
-  const isHr = isPeopleList || isNotifications
 
   const asOf = useAppStore((s) => s.asOf)
   const setAsOf = useAppStore((s) => s.setAsOf)
@@ -116,7 +114,7 @@ export function Shell() {
   const reviewBadge =
     review?.windowState === 'open' && !review.signedOff
       ? scopedCountry
-        ? review.lines.filter((line) => !line.approved && line.country === scopedCountry).length
+        ? review.lines.filter((line) => !line.approved && !line.rejected && line.country === scopedCountry).length
         : (review.badgeCount ?? review.remaining ?? 0)
       : 0
   const cycleLabel = overview?.cycle.label ?? 'Payroll'
@@ -133,6 +131,7 @@ export function Shell() {
     payrollCaption: 'Powered by Multiplier',
     multiplierBrandColor: '#863bff',
     admin: { name: 'Maya Rao', role: 'HR admin', initials: 'MR' },
+    financeAdmin: { name: 'Noah Grant', role: 'Fund manager', initials: 'NG' },
     prototypeBar:
       "Prototype · Acme Tech's HR workspace (employee data synced from Workday) with Multiplier Payroll embedded",
   }
@@ -147,9 +146,11 @@ export function Shell() {
   const setPersona = useAppStore((s) => s.setPersona)
   const admins = countryAdmins(company)
   const selectedAdmin =
-    persona === 'global'
-      ? co.admin
-      : admins.find((row) => row.code === persona) || co.admin
+    persona === 'finance'
+      ? co.financeAdmin || { name: 'Noah Grant', role: 'Fund manager', initials: 'NG' }
+      : persona === 'global'
+        ? co.admin
+        : admins.find((row) => row.code === persona) || co.admin
   const syncCaption = `${co.syncCaption} · ${co.syncAgoMinutes} min ago`
 
   return (
@@ -183,6 +184,9 @@ export function Shell() {
             >
               <option value="global">
                 {co.admin.name} · Global HR admin
+              </option>
+              <option value="finance">
+                {(co.financeAdmin || { name: 'Noah Grant' }).name} · Fund manager
               </option>
               {admins.map((row) => (
                 <option key={row.code} value={row.code}>
@@ -260,14 +264,6 @@ export function Shell() {
                 <span>{label}</span>
               </button>
             ))}
-            <NavLink to="/people/notifications" className={() => itemClass(isNotifications)}>
-              <span>Notifications</span>
-              {unreadNotifications > 0 ? (
-                <span className="rounded border border-status-danger-border bg-status-danger-bg px-1 text-[10px] font-medium tabular text-status-danger-text">
-                  {unreadNotifications}
-                </span>
-              ) : null}
-            </NavLink>
             </div>
 
             <div className="mx-2 mt-6 border-t border-border" />
@@ -306,6 +302,32 @@ export function Shell() {
             </div>
 
             <div className="mx-2 mt-6 border-t border-border" />
+            <div data-testid="nav-notifications">
+            <GroupLabel
+              title="Notifications"
+              captionOnly={
+                <span className="flex max-w-[8.5rem] items-center gap-1">
+                  <MultiplierLogo size={12} className="shrink-0 opacity-90" alt="" />
+                  <span
+                    className="truncate text-[10px] font-medium leading-tight"
+                    style={{ color: co.multiplierBrandColor || 'var(--multiplier-brand)' }}
+                  >
+                    {co.payrollCaption || 'Powered by Multiplier'}
+                  </span>
+                </span>
+              }
+            />
+            <NavLink to="/people/notifications" className={() => itemClass(isNotifications)}>
+              <span>Notifications</span>
+              {unreadNotifications > 0 ? (
+                <span className="rounded border border-status-danger-border bg-status-danger-bg px-1 text-[10px] font-medium tabular text-status-danger-text">
+                  {unreadNotifications}
+                </span>
+              ) : null}
+            </NavLink>
+            </div>
+
+            <div className="mx-2 mt-6 border-t border-border" />
             <GroupLabel title="Coming next" />
             {stubNav.map((item) => (
               <button
@@ -325,11 +347,11 @@ export function Shell() {
         </aside>
 
         <main className="flex min-w-0 flex-1 flex-col">
-          {isPayroll || isHr ? (
+          {isPayroll || isPeopleList || isNotifications ? (
             <header className="flex h-11 items-center justify-between border-b border-border bg-surface px-6 text-[13px]">
               <div className="flex items-center">
                 <p className="font-medium text-text-primary">
-                  {isPayroll ? `Payroll · ${cycleLabel}` : 'People'}
+                  {isPayroll ? `Payroll · ${cycleLabel}` : isNotifications ? 'Notifications' : 'People'}
                 </p>
                 {isPayroll ? (
                   <button
@@ -340,24 +362,6 @@ export function Shell() {
                       const viewOverview = async () => {
                         cancelConfirm()
                         navigate('/payroll/overview')
-                      }
-                      if ((overview?.sync?.manualRemaining ?? 1) === 0) {
-                        const last = overview?.sync?.lastSync
-                        const when = last?.syncedAt
-                          ? last.userInitiated
-                            ? formatJourneyAt(last.syncedAt)
-                            : formatIsoDate(last.syncedAt.slice(0, 10))
-                          : 'today'
-                        askConfirm({
-                          title: 'Already synced today',
-                          body: [
-                            `Last sync · ${when}${last?.summary ? ` · ${last.summary}` : ''}`,
-                            'This prototype day already has its sync. Move the prototype date forward to run another one.',
-                          ].join('\n'),
-                          confirmLabel: 'View in Overview',
-                          onConfirm: viewOverview,
-                        })
-                        return
                       }
                       const steps = [
                         'Fetching changes from the connector',
@@ -410,11 +414,7 @@ export function Shell() {
                         })
                     }}
                   >
-                    {syncing
-                      ? syncLabel || 'Syncing…'
-                      : (overview?.sync?.manualRemaining ?? 1) === 0
-                        ? 'Synced today'
-                        : `Sync from connector (example ${co.hrTool || 'Workday'})`}
+                    {syncing ? syncLabel || 'Syncing…' : `Sync from connector (example ${co.hrTool || 'Workday'})`}
                   </button>
                 ) : null}
                 {isPayroll ? (

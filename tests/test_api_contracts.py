@@ -252,7 +252,7 @@ class TestReviewAndEmployees:
         block = r.json["ifUnapproved"]
         assert block["settled"] is False
         headline = block["headline"].lower()
-        assert "previous pay" in headline
+        assert "old base pay" in headline
         assert "arrear" in headline
         assert "deductible" in headline
         by_id = {item["employeeId"]: item for item in block["items"]}
@@ -291,6 +291,28 @@ class TestReviewAndEmployees:
         }
         assert "emp_james" not in carry
         assert "emp_chloe" in carry
+
+    def test_rejected_line_uses_previous_pay_and_is_not_a_miss(self, api_client):
+        rev = api_client.get("/api/review?asOf=2026-10-20", headers=HEADERS)
+        james = next(line for line in rev.json["lines"] if line["employeeId"] == "emp_james")
+        rejected = api_client.post(
+            f"/api/review/{james['id']}/reject",
+            headers=JSON_HEADERS,
+            json={"asOf": "2026-10-20"},
+        )
+        assert rejected.status_code == 200, rejected.get_json()
+        line = next(row for row in rejected.json["lines"] if row["employeeId"] == "emp_james")
+        assert line["rejected"] is True
+        assert line["approved"] is False
+        assert line.get("carryNote") in (None, "")
+        ids = {item["employeeId"] for item in (rejected.json.get("ifUnapproved") or {}).get("items") or []}
+        assert "emp_james" not in ids
+        outcomes = api_client.get("/api/cycles/current/overview?asOf=2026-10-29", headers=HEADERS)
+        assert outcomes.status_code == 200
+        previous = outcomes.json["payOutcomes"]["paidPreviousSalary"]["employees"]
+        assert all(person["id"] != "emp_james" for person in previous)
+        missing = outcomes.json["payOutcomes"]["missingInputs"]["employees"]
+        assert all(person["id"] != "emp_james" for person in missing)
 
     def test_review_counts_and_carry_follow_pay_not_a_fixed_list(self, api_client):
         """Editing pay changes the warning amount. Undo puts the line back in Need your check."""
@@ -338,7 +360,7 @@ class TestReviewAndEmployees:
         assert early.json["windowState"] == "open"
         block = early.json["ifUnapproved"]
         assert block["settled"] is True
-        assert "previous pay was deposited" in block["headline"].lower()
+        assert "old base pay was deposited" in block["headline"].lower()
         ids = {item["employeeId"] for item in block["items"]}
         assert ids == {
             "emp_james",
@@ -566,10 +588,8 @@ class TestJoinerJourney:
         notes = api_client.get(
             "/api/notifications?asOf=2026-10-13&channel=email", headers=HEADERS
         ).json["notifications"]
-        assert not any(
-            n.get("kind") == "details_confirmed" and "Sofia Mendes" in (n.get("subject") or "")
-            for n in notes
-        )
+        thanks = next(n for n in notes if n.get("kind") == "payroll_on_track" and n.get("recipient") == "Sofia Mendes")
+        assert thanks["subject"] == "Thanks for adding your details. October payroll is on track."
 
         issues = api_client.get(
             "/api/issues?status=open&asOf=2026-10-13", headers=HEADERS

@@ -67,9 +67,14 @@ class TestRemindWithoutSmtp:
         assert n.json["cta"]["href"].startswith("/people/")
         assert n.json["cta"]["href"].endswith("?panel=missing#missing-details")
         # SMTP status is not inside the employee-facing email body
-        assert "SMTP not set up" not in (n.json.get("bodySummary") or "")
-        assert "add your details here" in (n.json.get("bodySummary") or "").lower()
+        body_text = n.json.get("bodySummary") or ""
+        assert "SMTP not set up" not in body_text
+        assert "What: your tax ID" in body_text
+        assert "By when: Oct 15" in body_text
+        assert "Why: October payroll will be missed" in body_text
+        assert body_text.startswith("How:") or "\nHow:" in body_text
         assert n.json.get("kind") == "employee_reminder"
+        assert n.json.get("subject") == "Add your tax ID by Oct 15 or October payroll will be missed"
         assert n.json.get("audience") == "employee"
         assert n.json.get("country") == "Germany"
 
@@ -113,5 +118,26 @@ class TestRemindWithoutSmtp:
             "/api/notifications?asOf=2026-10-12",
             headers={"X-Customer-Id": "cust_acme"},
         )
-        subjects = [n["subject"] for n in inbox.json["notifications"]]
-        assert not any("Lena added" in s or "payment on track" in s.lower() for s in subjects)
+        notes = inbox.json["notifications"]
+        subjects = [n["subject"] for n in notes]
+        assert not any("Lena added" in s for s in subjects)
+        thanks = next(n for n in notes if n.get("kind") == "payroll_on_track")
+        assert thanks["subject"] == "Thanks for adding your details. October payroll is on track."
+        assert thanks["recipient"] == "Lena Fischer"
+        assert "October payroll is on track" in (thanks.get("bodySummary") or "")
+
+    def test_late_details_thank_the_pay_month_not_a_fixed_october(self, api_client):
+        filled = api_client.post(
+            "/api/employees/emp_lena/missing-fields",
+            headers=HEADERS,
+            json={"asOf": "2026-11-05", "fields": {"Tax ID": "12345678901"}},
+        )
+        assert filled.status_code == 200, filled.json
+        assert filled.json["payTiming"]["run"] == "November"
+        notes = api_client.get(
+            "/api/notifications?asOf=2026-11-05", headers=HEADERS
+        ).json["notifications"]
+        thanks = next(n for n in notes if n.get("kind") == "payroll_on_track" and n.get("recipient") == "Lena Fischer")
+        assert thanks["subject"] == "Thanks for adding your details. November payroll is on track."
+        assert "November payroll is on track" in (thanks.get("bodySummary") or "")
+        assert "October" not in (thanks.get("subject") or "")

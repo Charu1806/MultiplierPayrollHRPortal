@@ -1,6 +1,6 @@
 import type { CompanyConfig, Country, NotificationListItem } from '@/api/types'
 
-export type PersonaId = 'global' | 'IN' | 'UK' | 'DE' | 'BR'
+export type PersonaId = 'global' | 'finance' | 'IN' | 'UK' | 'DE' | 'BR'
 
 export type CountryAdmin = {
   code: Exclude<PersonaId, 'global'>
@@ -31,8 +31,12 @@ export function countryAdmins(company: CompanyConfig | null | undefined): Countr
   }))
 }
 
+export function seesAllCountries(persona: PersonaId): boolean {
+  return persona === 'global' || persona === 'finance'
+}
+
 export function personaCountry(persona: PersonaId, company: CompanyConfig | null | undefined): Country | null {
-  if (persona === 'global') return null
+  if (seesAllCountries(persona)) return null
   return countryAdmins(company).find((row) => row.code === persona)?.country ?? null
 }
 
@@ -44,7 +48,7 @@ export function cycleDay(payDate: string, day: number): string {
 export function readStoredPersona(): PersonaId {
   if (typeof window === 'undefined') return 'global'
   const value = window.localStorage.getItem('clarity.persona')
-  if (value === 'IN' || value === 'UK' || value === 'DE' || value === 'BR' || value === 'global') return value
+  if (value === 'IN' || value === 'UK' || value === 'DE' || value === 'BR' || value === 'global' || value === 'finance') return value
   return 'global'
 }
 
@@ -58,15 +62,16 @@ export function notificationVisible(
   company: CompanyConfig | null | undefined,
 ): boolean {
   const admin = countryAdmins(company).find((row) => row.code === persona)
+  if (persona === 'finance') return item.audience === 'finance'
   if (item.kind === 'hr_query') {
     if (persona === 'global') return true
     return Boolean(admin && item.recipient.includes(admin.name))
   }
-  if (item.kind?.startsWith('employee_reminder')) {
+  if (item.kind?.startsWith('employee_reminder') || item.kind?.startsWith('payroll_on_track')) {
     if (persona === 'global') return true
     return Boolean(admin && item.country === admin.country)
   }
-  if (persona === 'global') return item.audience === 'global'
+  if (persona === 'global') return item.audience === 'global' || item.audience === 'finance'
   if (!admin) return false
   return (item.audience === 'country' || item.audience === 'employee') && item.country === admin.country
 }

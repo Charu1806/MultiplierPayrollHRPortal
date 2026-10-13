@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Info } from 'lucide-react'
 import { Button, EmptyState, PageHeader, StatusChip } from '@/components'
 import { ChangesReminder } from '@/features/payroll/ChangesReminder'
+import { FinalReportNote } from '@/features/payroll/components/StageTracker'
 import {
   formatIsoDate,
   formatMoney,
@@ -11,7 +12,7 @@ import {
   whoLabel,
 } from '@/features/payroll/lib/labels'
 import { validateFieldValue, type FieldFormatSpec } from '@/lib/fieldValidation'
-import { personaCountry } from '@/features/persona'
+import { personaCountry, seesAllCountries } from '@/features/persona'
 import { useAppStore } from '@/store'
 import type { IssueDto } from '@/api/types'
 import { ClarityApiError } from '@/api/clarityClient'
@@ -512,7 +513,7 @@ export function ActionsPage() {
   const persona = useAppStore((s) => s.persona)
   const company = useAppStore((s) => s.company)
   const lockedCountry = personaCountry(persona, company)
-  const lockedCode = persona === 'global' ? '' : persona
+  const lockedCode = seesAllCountries(persona) ? '' : persona
 
   const countryParam = lockedCode || params.get('country') || ''
   const countryFilter = lockedCountry || COUNTRY_PARAM[countryParam] || ''
@@ -522,28 +523,28 @@ export function ActionsPage() {
     return true
   })
   const queryId = params.get('issue')
+  const openIds = openIssues.map((issue) => issue.id).join(',')
+  const detailIssue =
+    selectedIssue && openIssues.some((issue) => issue.id === selectedIssue.id) ? selectedIssue : null
 
   useEffect(() => {
-    if (queryId) {
-      void loadIssue(queryId)
+    const ids = openIds ? openIds.split(',') : []
+    if (queryId && ids.includes(queryId)) {
+      if (selectedIssueId !== queryId) void loadIssue(queryId)
       return
     }
-    if (openIssues[0]) {
-      const next = new URLSearchParams(params)
-      next.set('issue', openIssues[0].id)
-      navigate(`/payroll/actions?${next.toString()}`, { replace: true })
+    const next = new URLSearchParams()
+    if (countryParam) next.set('country', countryParam)
+    if (ids[0]) next.set('issue', ids[0])
+    const search = next.toString()
+    const target = search ? `/payroll/actions?${search}` : '/payroll/actions'
+    if (`${window.location.pathname}${window.location.search}` !== target) {
+      navigate(target, { replace: true })
     }
-  }, [queryId, openIssues[0]?.id, loadIssue, navigate, countryFilter])
-
-  useEffect(() => {
-    if (selectedIssue?.status !== 'resolved') return
-    const nextIssue = openIssues.find((i) => i.id !== selectedIssue.id)
-    if (nextIssue && queryId === selectedIssue.id) {
-      const next = new URLSearchParams(params)
-      next.set('issue', nextIssue.id)
-      navigate(`/payroll/actions?${next.toString()}`, { replace: true })
+    if (!ids.length && selectedIssueId) {
+      useAppStore.setState({ selectedIssue: null, selectedIssueId: null })
     }
-  }, [selectedIssue?.status, selectedIssue?.id, openIssues, queryId, navigate])
+  }, [queryId, openIds, selectedIssueId, countryParam, loadIssue, navigate])
 
   function select(id: string) {
     const next = new URLSearchParams(params)
@@ -586,9 +587,10 @@ export function ActionsPage() {
           </label>
         }
       />
+      <FinalReportNote />
       <ChangesReminder reminder={overview?.changesReminder} />
 
-      {openIssues.length === 0 && !selectedIssue ? (
+      {openIssues.length === 0 ? (
         <EmptyState
           title="No issues"
           description={
@@ -616,8 +618,8 @@ export function ActionsPage() {
             ))}
           </div>
           <div className="col-span-7">
-            {selectedIssue ? (
-              <IssueDetail issue={selectedIssue} />
+            {detailIssue ? (
+              <IssueDetail issue={detailIssue} />
             ) : (
               <EmptyState
                 title="Select an issue"

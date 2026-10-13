@@ -226,7 +226,9 @@ def preview_pay_edit(
         tax_rate=rules_svc.tax_rate(emp["country"]),
         cycle=pay_month,
     )
-    check = rules_svc.ai_check_payload(emp, salary.gross)
+    check = None
+    if abs(new_base - float(emp["base_salary"] or 0)) > 0.01:
+        check = rules_svc.ai_check_payload(emp, new_base)
     month = pay_month if included else (landing.get("label") or pay_month).split()[0]
     confirmation = f"Included in {month} pay" if included else f"Moves to {month}"
 

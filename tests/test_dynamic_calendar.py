@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT))
 HEADERS = {"X-Customer-Id": "cust_acme"}
 
 # Global leader mail lands on these days of the pay month, plus pay day (29) and the 30th close.
-GLOBAL_DAYS = (10, 15, 16, 19, 20, 22, 23, 25, 26, 29, 30)
+GLOBAL_DAYS = (10, 15, 16, 19, 20, 22, 23, 25, 26, 27, 28, 29, 30)
 
 
 @pytest.fixture()
@@ -42,12 +42,12 @@ def _global_days_due(as_of: str) -> set:
 
 
 CASES = [
-    ("2026-10-12", "October", "2026-10-29", "2026-10-27", [], False),
-    ("2026-10-30", "October", "2026-10-29", "2026-10-27", [], True),
-    ("2026-11-14", "November", "2026-11-29", "2026-11-27", ["October"], False),
-    ("2026-11-30", "November", "2026-11-29", "2026-11-27", ["October"], True),
-    ("2026-12-05", "December", "2026-12-29", "2026-12-27", ["November", "October"], False),
-    ("2027-01-10", "January", "2027-01-29", "2027-01-27", ["December", "November", "October"], False),
+    ("2026-10-12", "October", "2026-10-29", "2026-10-28", [], False),
+    ("2026-10-30", "October", "2026-10-29", "2026-10-28", [], True),
+    ("2026-11-14", "November", "2026-11-29", "2026-11-28", ["October"], False),
+    ("2026-11-30", "November", "2026-11-29", "2026-11-28", ["October"], True),
+    ("2026-12-05", "December", "2026-12-29", "2026-12-28", ["November", "October"], False),
+    ("2027-01-10", "January", "2027-01-29", "2027-01-28", ["December", "November", "October"], False),
 ]
 
 
@@ -65,6 +65,12 @@ def test_dashboard_and_notifications_follow_the_month(api_client, as_of, month, 
     year, mon, _day = pay.split("-")
     assert body["dates"]["inputDeadline"].endswith("-22")
     assert body["dates"]["inputDeadline"].startswith(f"{year}-{mon}")
+    report_day = f"{year}-{mon}-20"
+    report = next((row for row in body.get("upNext") or [] if row.get("title") == "Final report"), None)
+    if as_of <= report_day:
+        assert report and report["deadline"] == report_day
+    else:
+        assert report is None
 
     banner = body.get("octoberSummary")
     if highlight:
@@ -103,6 +109,7 @@ def test_dashboard_and_notifications_follow_the_month(api_client, as_of, month, 
     schedule = next(n for n in india if n["sendDate"] == _iso(as_of, 3))
     assert month in (schedule.get("subject") or "")
     assert "schedule" in (schedule.get("bodySummary") or "").lower()
+    assert f"{month[:3]} 20" in (schedule.get("bodySummary") or "")
     assert month[:3] in (schedule.get("bodySummary") or "")
     if month != "October":
         assert "Oct " not in (schedule.get("bodySummary") or "")

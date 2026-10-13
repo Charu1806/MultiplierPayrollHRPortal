@@ -184,6 +184,7 @@ export type OverviewResponse = CycleCurrentResponse & {
   changesReminder?: ChangesReminder | null
   outcome?: OutcomeDto | null
   funding?: { receivedOn: string; countries: { country: string; received: boolean; label: string }[] } | null
+  fundsAddedOn?: string | null
   submitted?: { message: string } | null
   notInRun?: { count: number; employees: { id: string; name: string; country?: string }[]; message: string; href: string }
   carryOvers?: { id: string; name: string; reason?: string | null }[]
@@ -532,6 +533,7 @@ export type ReviewLineDto = {
   origin?: string
   needsHumanCheck: boolean
   approved?: boolean
+  rejected?: boolean
   approvedOn?: string | null
   approvedBy?: string | null
   openHref?: string
@@ -638,7 +640,7 @@ export type NotificationListItem = {
   kind?: string
   delivery?: 'sent' | 'not_sent_smtp_missing' | null
   ctaLabel?: string
-  audience?: 'global' | 'country' | 'employee' | null
+  audience?: 'global' | 'country' | 'employee' | 'finance' | null
   country?: string | null
   cc?: string | null
 }
@@ -661,9 +663,17 @@ export type NotificationPolicyLink = {
   note?: string | null
 }
 
+export type FundingConfirm = {
+  decision: 'yes' | 'no' | null
+  decidedOn: string | null
+  fundsAddedOn: string | null
+  cycleKey: string
+}
+
 export type NotificationDetail = NotificationListItem & {
   actions: NotificationActionDto[]
   policy?: NotificationPolicyLink | null
+  fundingConfirm?: FundingConfirm | null
   cta: {
     label: string
     href: string

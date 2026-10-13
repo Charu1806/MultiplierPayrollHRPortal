@@ -85,24 +85,24 @@ The solution is a **Multiplier-branded Payroll tab embedded inside the customer'
 │  Time off    [V2]                                             │
 │  Insurance   [V2]                                             │
 │  Expenses    [V2]                                             │
-│  Notifications (badge = unread mail for this persona)         │
 │ Payroll · Powered by Multiplier                               │
 │  Overview                                                     │
 │  Action needed (badge = open issues in this persona's scope)  │
 │  Review & approve (badge = lines needing approval in scope)   │
 │  Employees                                                    │
+│ Notifications · Powered by Multiplier                        │
+│  Notifications (badge = unread mail for this persona)         │
 │  ─────────                                                    │
 │  AI assistant  [V2] (greyed)                                  │
-│  AI assisted voice call [V2] (greyed)                         │
 │  Finance view  [V3] (greyed)                                  │
 │  Employee payroll tool [V3] (greyed)                          │
 └──────────────┴────────────────────────────────────────────────┘
 ```
 
 - HR-tool shell is neutral, no real brand. The People group caption is “Sync from HRIS tools and third party channels”.
-- **Powered by Multiplier** sits in the sidebar next to the Payroll label. People and HR page headers do not repeat it.
+- **Powered by Multiplier** sits in the sidebar next to the Payroll label and the Notifications label. People and HR page headers do not repeat it.
 - **Two places list employees.** People → Employees (`/people`) is the HR list. Payroll → Employees (`/payroll/employees`) is the payroll view of the same roster, scoped to the signed-in country when a country admin is selected.
-- People pages use the HR-tool look, not a Payroll header.
+- People pages use the HR-tool look, not a Payroll header. Notifications is its own group below Payroll. Its header says Notifications and does not repeat Powered by Multiplier.
 - The employee form (`/form/:token`) is a standalone page styled like a Google Form, without the shell.
 - **Breadcrumb** on every page, top left above the title. Each part except the last is a link.
 - **← Back** next to the breadcrumb on every page that is not a top-level nav page (employee profile, add employee, one-time payment, record exit, employee form). Uses browser history; falls back to the parent crumb.
@@ -151,8 +151,8 @@ Display milestones are the same day of the pay month. October is the worked exam
 | 1–15 | Add employees, bonuses, hikes, and missing details by the 15th. People added after the 15th move to next month. Review by the 19th and final closure on the 22nd stay on the card, with payroll submitted and pay day |
 | 16–19 | Complete review by the 19th |
 | 20–22 | Final closure on the 22nd. Changes after the 22nd apply next month |
-| 23–26 | Funding. Finance admin is named. Demo mail treats funds as already added on the 25th and 26th |
-| 27 | Payroll submitted |
+| 23–27 | Funding window, a customer setting. The fund manager gets a mail with Yes and No. Funds are added on the day they click Yes |
+| 28 | Payroll submitted, the 28th of the pay month |
 | 29 | Pay day. Before it, the tracker counts days left. On the day it says Today. After it, paid N of M |
 | 30 | Final report of who was actually paid, including a payment return recorded that day |
 | 30–31 | Yellow highlight for the payroll that just paid |
@@ -169,10 +169,10 @@ Engine dates in `config/cycle.json` (same pattern for October 2026, November 202
 - Input deadline, input finalisation, and review close: the **22nd**.
 - Final sync and calculation: the **23rd**.
 - Funding request and funding due: the **26th**.
-- Submitted: the **27th**.
+- Submitted: the **28th**.
 - Pay date: the **29th**. A returned payment is recorded the next day (30 October for October).
 
-The stage tracker does not copy those engine labels. It shows **Input close (15th) → Review window (16th–19th) → Final report (21st) → Review closed (22nd) → Funding (24th–27th) → Pay day**.
+The stage tracker does not copy those engine labels. It shows **Input close (15th) → Review window (16th–19th) → Final report (20th) → Review close (22nd) → Funding (23rd–27th) → Payroll submitted (28th of the pay month) → Pay day**. Input close, the review window, the final report, the funding window, and pay day are the customer’s settings. Multiplier recommends those dates; the customer can choose others. Review close on the 22nd is a deadline imposed by Multiplier. Payroll submitted is the 28th of the pay month. Funds are added on the day the fund manager clicks Yes. The days are the same day of whichever month is open. Global and country HR see the same tracker.
 
 From the 1st, every page shows the cycle that contains that date. Closed cycles whose pay date is before the 1st of the current month appear under Previous payrolls. A change synced after the engine deadline is marked Next cycle.
 
@@ -182,7 +182,7 @@ People is the customer's HR system (Workday, simulated). Multiplier Payroll keep
 
 - HR owns employment, salary, bonus, leave, manager, and other compensation changes. Saving those fields updates the HR source only and confirms **Saved in HR tool**. It does not change the payroll snapshot.
 - Payroll owns tax identifiers and bank details where the field owner is the employee or Multiplier. Saving those revalidates the issue immediately.
-- The snapshot updates on **Sync from Workday** (at most one manual full sync per calendar day, `sync.maxPerDay`) or on the scheduled final sync. The final sync does not use up the manual allowance and does not duplicate events, funding snapshots, or emails if it runs again.
+- The snapshot updates on **Sync from connector**. Manual sync can run any number of times on the same prototype day. The scheduled final sync does not duplicate events, funding snapshots, or emails if it runs again.
 - A failed sync leaves the last successful snapshot and timestamp in place.
 - The employee profile's payroll block is read-only and shows the last successful sync time. Payroll warnings stay off People screens.
 
@@ -248,7 +248,7 @@ Any non-empty value in the right format is accepted. Validate the format only: P
 
 On the Overview, the deadline card names the open month. Through the 15th it reads, for October:
 
-> Add employees, bonuses, hikes, and missing details by **Oct 15**. People added after Oct 15 move to next month. Complete review by **Oct 19**. Final closure **Oct 22**. Payroll submitted **Oct 27** · Pay day **Oct 29**.
+> Add employees, bonuses, hikes, and missing details by **Oct 15**. People added after Oct 15 move to next month. Complete review by **Oct 19**. Final closure **Oct 22**. Payroll submitted **Oct 28** · Pay day **Oct 29**.
 
 In November the same card says Nov 15, Nov 19, Nov 22, Nov 27, and Nov 29. When anyone will miss payment, a short “N will miss payment” line inside the card scrolls to Countries. The names are not listed on Overview.
 
@@ -322,9 +322,9 @@ Mail is computed for the open month. Subjects start with that month or that coun
 
 - **Global:** 10, 15, 16, 19, 20, 22, 23 (funding plus who-will-be-paid), 25, 26, pay day (29), and the 30th actual-paid report. Several say to ignore the mail when nothing is open or funds are already in.
 - **Country HR admin:** 3 (schedule), 10, 13, 14, 15, 16, 18, 19, 20, 21, 22, 23 (ask finance, plus who-will-be-paid), 25, 26, pay day, and the 30th. Global is in copy on the late review and funding notes.
-- **Employees with missing details:** 10, 13, 14, 15. The button opens `/people/{id}?panel=missing#missing-details`. Each mail says they will miss payment this cycle otherwise. No mail once details are in and pay is on track. The screen then says “Thanks for adding your details. Payment is on track.”
+- **Employees with missing details:** 10, 13, 14, 15. The button opens `/people/{id}?panel=missing#missing-details`. Each mail says the month’s payroll will be missed otherwise. When the saved details put payroll on track, the employee gets “Thanks for adding your details. {month} payroll is on track.” The screen still says “Thanks for adding your details. Payment is on track.”
 
-The inbox on `/people/notifications` shows only mail for the signed-in persona. Global sees global mail and employee reminders. A country admin sees that country and its employee reminders. Write mail is an in-app note from Global to a country admin.
+The inbox on `/people/notifications` shows only mail for the signed-in persona. Global sees global mail, the fund manager’s mail, and employee reminders. Noah Grant, the fund manager, sees the funds email and can click Yes or No. A country admin sees that country and its employee reminders. Write mail is an in-app note from Global to a country admin.
 
 Older reminder rows with no audience stay in the API and stay out of this inbox.
 
@@ -355,9 +355,9 @@ Missing-data items **never** appear in Review & approve. Review shows: "**N empl
 
 ### Screen 1 – Overview (`/payroll/overview`)
 
-- Deadline card, six-stage tracker, and (for Global) a country list. No separate list of people who will miss payment.
+- Deadline card, seven-stage tracker, and (for Global) a country list. No separate list of people who will miss payment.
 - The deadline card follows §5. “N will miss payment” is a short line in that card and scrolls to Countries.
-- **Stage tracker:** Input close, Review window, Final report, Review closed, Funding (names the finance admin and whether funds are still to be added), Pay day. Dates are the pay month. Before pay day the last stage counts days left. On pay day it says Today. After pay day it says paid N of M.
+- **Stage tracker:** Input close, Review window, Final report, Funding window (23rd–27th), and Pay day are your settings; Multiplier recommends the dates. Review close is seven days before pay day (the 22nd when pay day is the 29th) and is a deadline imposed by Multiplier. Payroll submitted is the 28th of the pay month (“The 28th of the pay month. Multiplier calculating the payment.”). Funding names the fund manager. Funds are added on the day they click Yes in their email. The same tracker shows for Global and country HR. Dates are the pay month. Before pay day the last stage counts days left. On pay day it says Today. After pay day it says paid N of M.
 - **Previous payroll:** a yellow highlight only on the 30th and 31st of the pay month. From the 1st, **Previous payrolls** lists earlier cycles, most recent first, frozen at the last day of each pay month.
 - Country rows are Global only. Each row is on track or at risk, names the country admin, and offers Write mail.
 
@@ -394,7 +394,7 @@ Missing-data items **never** appear in Review & approve. Review shows: "**N empl
 
 ### Screen 5 – Notifications (`/people/notifications`)
 
-- Tab switch: **Email** | **Slack** (V2 stub).
+- Tab switch: **Email** | **AI Voice call** (V2 stub) | **Slack** (V2 stub) | **In-app alerts** (V3 stub).
 - Left: inbox, newest first, with unread count and numbers 1, 2, 3 on unread rows. Right: selected email + CTA per §6 notifications (Open Action needed / Open Review & approve / Overview / Add my details). Opening a message marks it read.
 
 ### Attachments (Add employee, Employee profile, One-time payment, Record exit)
@@ -474,7 +474,7 @@ Standalone page (no HR nav). Signed single-use token expires after the cycle cut
 | Item | Version | How to show |
 |---|---|---|
 | AI assistant | V2 | Greyed nav item with tag |
-| AI assisted voice call | V2 | Greyed nav item with tag |
+| AI Voice call | V2 | Greyed tab in Notifications, before Slack |
 | Write-back to HR tool | V2 | Greyed note on issue detail |
 | Slack reminders | V2 | Greyed tab in Notifications |
 | Time off, Insurance, Expenses | V2 | Greyed under People |
@@ -496,7 +496,7 @@ The screenshots in `stitch_multiplier_payroll_integration_prototype/` are visual
 
 ## 11. Demo script (acceptance checks – round 5)
 
-**Path A (signed off):** Fix all → approve all → sign off → Oct 27 payroll submitted → Oct 29 pay day → Oct 30 David’s payment returned → Nov 1 Action needed has David and October sits under Previous payrolls.
+**Path A (signed off):** Fix all → approve all → sign off → Oct 28 payroll submitted → Oct 29 pay day → Oct 30 David’s payment returned → Nov 1 Action needed has David and October sits under Previous payrolls.
 
 **Path B (not signed off):** Reset → leave Priya unfixed, approve nothing → after the 22nd the closed review carries unapproved amounts → Nov 1 Action needed has Priya and David → fix Priya → the November review shows the carry. Review nav badge shows that country’s count when a country admin is signed in.
 
@@ -604,4 +604,4 @@ Validation findings come from `config/rules.json` (required fields + owners, for
 - Token is single-use and expires after the cycle cutoff.
 - If SMTP is not configured: Remind still works. Notifications store the email for the country admin and for Global, and the button reads as sent. A real Gmail delivery needs the four SMTP settings above. If SMTP is configured and the send fails, the row stays undelivered and the message includes the error.
 - Add-details links, including Remind, open `/people/{id}?panel=missing#missing-details`.
-- When the saved details put pay on track, the screen says “Thanks for adding your details. Payment is on track.” and no confirmation email is sent.
+- When the saved details put pay on track, the screen says “Thanks for adding your details. Payment is on track.” The employee also gets an email: “Thanks for adding your details. {month} payroll is on track.”

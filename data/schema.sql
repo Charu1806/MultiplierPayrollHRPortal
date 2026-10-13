@@ -255,6 +255,7 @@ CREATE TABLE IF NOT EXISTS approvals (
   line_id       TEXT NOT NULL REFERENCES review_lines(id) ON DELETE CASCADE,
   approved_on   TEXT NOT NULL,                  -- prototype date
   approved_by   TEXT NOT NULL,
+  decision      TEXT NOT NULL DEFAULT 'approved', -- approved | rejected
   revoked_on    TEXT,                           -- set when the line changed after approval
   revoke_reason TEXT,
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
@@ -323,6 +324,16 @@ CREATE TABLE IF NOT EXISTS sync_changes (
   summary            TEXT NOT NULL,
   cycle_assignment   TEXT NOT NULL,            -- current | next
   created_at         TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS funding_decisions (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id  TEXT NOT NULL,
+  cycle_key    TEXT NOT NULL,
+  decision     TEXT NOT NULL,                  -- yes | no
+  decided_on   TEXT NOT NULL,                  -- prototype date of the click
+  decided_by   TEXT,
+  created_at   TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS funding_snapshots (

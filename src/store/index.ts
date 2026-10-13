@@ -106,11 +106,13 @@ type AppStore = {
   reopenReview: (employeeId: string) => Promise<void>
   refreshReview: () => Promise<void>
   approveLine: (lineId: string) => Promise<void>
+  rejectLine: (lineId: string) => Promise<void>
   unapproveLine: (lineId: string) => Promise<void>
   signOff: () => Promise<import('@/api/types').ApproveResponse>
   approveReview: () => Promise<import('@/api/types').ApproveResponse>
   refreshNotifications: () => Promise<void>
   loadNotification: (id: string) => Promise<void>
+  confirmFunding: (decision: 'yes' | 'no', cycleKey: string) => Promise<void>
   resetDemo: () => Promise<void>
 }
 
@@ -231,6 +233,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
           clarityApi.getReview(asOf),
           clarityApi.getNotifications(asOf),
         ])
+      const selectedId = get().selectedIssueId
+      const selectedStillOpen = Boolean(
+        selectedId && issuesRes.issues.some((issue) => issue.id === selectedId),
+      )
       set({
         overview,
         issues: issuesRes.issues,
@@ -238,9 +244,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
         review,
         notifications: notificationsRes.notifications,
         isRefreshing: false,
+        ...(selectedId && !selectedStillOpen ? { selectedIssue: null, selectedIssueId: null } : {}),
       })
-      const selectedId = get().selectedIssueId
-      if (selectedId) await get().loadIssue(selectedId)
+      if (selectedStillOpen && selectedId) await get().loadIssue(selectedId)
     } catch (err) {
       set({ isRefreshing: false })
       get().pushToast(errorMessage(err))
@@ -270,7 +276,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
   refreshIssues: async () => {
     try {
       const res = await clarityApi.getIssues(get().asOf, 'open')
-      set({ issues: res.issues })
+      const selectedId = get().selectedIssueId
+      const selectedStillOpen = Boolean(
+        selectedId && res.issues.some((issue) => issue.id === selectedId),
+      )
+      set({
+        issues: res.issues,
+        ...(selectedId && !selectedStillOpen ? { selectedIssue: null, selectedIssueId: null } : {}),
+      })
     } catch (err) {
       get().pushToast(errorMessage(err))
     }
@@ -474,6 +487,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
     await get().refreshOverview()
   },
 
+  rejectLine: async (lineId) => {
+    const review = await clarityApi.rejectLine(lineId, get().asOf)
+    set({ review })
+    await get().refreshOverview()
+  },
+
   unapproveLine: async (lineId) => {
     try {
       const review = await clarityApi.unapproveLine(lineId, get().asOf)
@@ -510,6 +529,20 @@ export const useAppStore = create<AppStore>((set, get) => ({
       set({ notifications: res.notifications })
     } catch (err) {
       get().pushToast(errorMessage(err))
+    }
+  },
+
+  confirmFunding: async (decision, cycleKey) => {
+    try {
+      await clarityApi.confirmFunding(get().asOf, decision, cycleKey)
+      await get().refreshOverview()
+      const selected = get().selectedNotification
+      if (selected) await get().loadNotification(selected.id)
+      else await get().refreshNotifications()
+      get().pushToast(decision === 'yes' ? 'Funds added today' : 'Funds are not added')
+    } catch (err) {
+      get().pushToast(errorMessage(err))
+      throw err
     }
   },
 

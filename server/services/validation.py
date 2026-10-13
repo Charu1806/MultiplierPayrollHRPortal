@@ -459,6 +459,9 @@ def apply_missing_fields(
     if not cleaned:
         raise ValueError("No field values provided")
 
+    before = get_employee_detail(store, employee_id, as_of, emp["customer_id"])
+    was_through = _details_put_pay_through(before.get("payTiming") or {})
+
     for name, value in cleaned.items():
         store.add_field_value(employee_id, name, value, source=source, as_of=as_of)
         store.log_change(employee_id, name, None, value, source=source, as_of=as_of)
@@ -469,7 +472,36 @@ def apply_missing_fields(
     cycle = store.get_current_cycle(emp["customer_id"])
     if cycle:
         rules_svc.after_input_change(store, cycle, employee_id, as_of=as_of, what="missing fields filled")
-    return get_employee_detail(store, employee_id, as_of, emp["customer_id"])
+    detail = get_employee_detail(store, employee_id, as_of, emp["customer_id"])
+    timing = detail.get("payTiming") or {}
+    if _details_put_pay_through(timing) and not was_through:
+        from server.services.notification import notify_payroll_on_track
+
+        owned = [name for name in cleaned if rules_svc.is_employee_owned(name)]
+        label = rules_svc.sentence_fields(owned) if owned else "details"
+        notify_payroll_on_track(
+            store, emp, as_of=as_of, label=label, month=_pay_month_name(timing, as_of)
+        )
+    return detail
+
+
+def _details_put_pay_through(timing: Dict[str, Any]) -> bool:
+    """Green this month, or details arrived late and pay moved to the next month."""
+    level = timing.get("level")
+    message = str(timing.get("message") or "")
+    if level == "green":
+        return True
+    return level == "amber" and message.startswith("Paid in ")
+
+
+def _pay_month_name(timing: Dict[str, Any], as_of: str) -> str:
+    """The month pay timing named, not a fixed October."""
+    run = str(timing.get("run") or "")
+    if run and run not in ("Held", "At risk"):
+        return run
+    from domain.calendar_rules import cycle_dates
+
+    return str(cycle_dates(as_of).get("label") or "This").split()[0]
 
 
 def _missing_title(fields: List[str]) -> str:

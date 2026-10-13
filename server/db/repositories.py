@@ -43,6 +43,26 @@ class Store:
                 "ALTER TABLE review_lines ADD COLUMN requires_employee_notified INTEGER NOT NULL DEFAULT 0"
             )
             self.conn.commit()
+        approval_cols = {r[1] for r in self.conn.execute("PRAGMA table_info(approvals)").fetchall()}
+        if "decision" not in approval_cols:
+            self.conn.execute(
+                "ALTER TABLE approvals ADD COLUMN decision TEXT NOT NULL DEFAULT 'approved'"
+            )
+            self.conn.commit()
+        self.conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS funding_decisions (
+              id           INTEGER PRIMARY KEY AUTOINCREMENT,
+              customer_id  TEXT NOT NULL,
+              cycle_key    TEXT NOT NULL,
+              decision     TEXT NOT NULL,
+              decided_on   TEXT NOT NULL,
+              decided_by   TEXT,
+              created_at   TEXT NOT NULL
+            )
+            """
+        )
+        self.conn.commit()
         self.conn.execute(
             """
             CREATE TABLE IF NOT EXISTS notification_reads (
@@ -147,6 +167,52 @@ class Store:
 
     def set_cycle_stage(self, cycle_id: str, stage: str) -> None:
         self.conn.execute("UPDATE payroll_cycles SET current_stage = ? WHERE id = ?", (stage, cycle_id))
+        self.conn.commit()
+
+    def funding_decision_as_of(
+        self, customer_id: str, cycle_key: str, as_of: str
+    ) -> Optional[Dict[str, Any]]:
+        """Latest Yes or No whose click date is on or before the prototype date."""
+        return row_to_dict(
+            self.conn.execute(
+                """
+                SELECT * FROM funding_decisions
+                WHERE customer_id = ? AND cycle_key = ? AND decided_on <= ?
+                ORDER BY decided_on DESC, id DESC
+                LIMIT 1
+                """,
+                (customer_id, cycle_key, as_of[:10]),
+            ).fetchone()
+        )
+
+    def add_funding_decision(
+        self,
+        customer_id: str,
+        cycle_key: str,
+        decision: str,
+        decided_on: str,
+        decided_by: str,
+    ) -> None:
+        latest = row_to_dict(
+            self.conn.execute(
+                """
+                SELECT decision FROM funding_decisions
+                WHERE customer_id = ? AND cycle_key = ? AND decided_on = ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (customer_id, cycle_key, decided_on[:10]),
+            ).fetchone()
+        )
+        if latest and latest["decision"] == decision:
+            return
+        self.conn.execute(
+            """
+            INSERT INTO funding_decisions
+              (customer_id, cycle_key, decision, decided_on, decided_by, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (customer_id, cycle_key, decision, decided_on[:10], decided_by, now_iso()),
+        )
         self.conn.commit()
 
     # ------------------------------------------------------------------ employees
@@ -841,8 +907,8 @@ class Store:
         self.conn.execute(f"UPDATE review_lines SET {cols} WHERE id = ?", (*fields.values(), line_id))
         self.conn.commit()
 
-    def line_approval(self, line_id: str, as_of: Optional[str] = None) -> Optional[Dict[str, Any]]:
-        """Active approval visible on as_of (approved_on <= as_of and not revoked by then)."""
+    def line_decision(self, line_id: str, as_of: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Active approve or reject visible on as_of."""
         rows = rows_to_dicts(
             self.conn.execute(
                 "SELECT * FROM approvals WHERE line_id = ? ORDER BY id DESC", (line_id,)
@@ -856,10 +922,24 @@ class Store:
             return r
         return None
 
+    def line_approval(self, line_id: str, as_of: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Active approval visible on as_of. A rejection is not an approval."""
+        row = self.line_decision(line_id, as_of)
+        if not row or (row.get("decision") or "approved") == "rejected":
+            return None
+        return row
+
     def approve_line(self, line_id: str, *, approved_on: str, approved_by: str) -> None:
         self.conn.execute(
-            "INSERT INTO approvals (line_id, approved_on, approved_by) VALUES (?, ?, ?)",
+            "INSERT INTO approvals (line_id, approved_on, approved_by, decision) VALUES (?, ?, ?, 'approved')",
             (line_id, approved_on, approved_by),
+        )
+        self.conn.commit()
+
+    def reject_line(self, line_id: str, *, rejected_on: str, rejected_by: str) -> None:
+        self.conn.execute(
+            "INSERT INTO approvals (line_id, approved_on, approved_by, decision) VALUES (?, ?, ?, 'rejected')",
+            (line_id, rejected_on, rejected_by),
         )
         self.conn.commit()
 

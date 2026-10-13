@@ -39,23 +39,54 @@ def demo_personal_email(employee_name: str, personal_email: Optional[str] = None
     return f"{local}+{_slug_first(employee_name)}@{domain}"
 
 
+def employee_details_mail(
+    *,
+    first: str,
+    label: str,
+    deadline: str,
+    month: str,
+    when_note: str = "",
+    detail: str = "",
+) -> Tuple[str, str]:
+    """Subject and body: what is missing, by when, why, and how."""
+    subject = f"Add your {label} by {deadline} or {month} payroll will be missed"
+    when = f"{deadline} · {when_note}" if when_note else deadline
+    what = f"your {label}."
+    if detail:
+        what = f"your {label}. {detail}"
+    body = (
+        f"Hi {first},\n\n"
+        f"What: {what}\n"
+        f"By when: {when}.\n"
+        f"Why: {month} payroll will be missed if this is still missing.\n"
+        f"How: use Add my details below. It takes about a minute. You don't need to reply to this email."
+    )
+    return subject, body
+
+
 def build_reminder_email(
     *,
     employee_name: str,
     fields_label: str,
     form_url: str,
     cutoff_label: str = "Oct 15",
+    month: str = "October",
+    detail: str = "",
 ) -> Tuple[str, str, str]:
     first = employee_name.split()[0]
-    subject = f"Add your {fields_label} for payroll"
+    subject, text_body = employee_details_mail(
+        first=first,
+        label=fields_label,
+        deadline=cutoff_label,
+        month=month,
+        detail=detail,
+    )
     text = (
-        f"Hi {first},\n\n"
-        f"We need your {fields_label} to pay you on time. Please add it by {cutoff_label}. "
-        f"It takes about a minute: add your details here.\n\n"
-        f"What we need\n"
-        f"· {fields_label} · needed for payroll\n\n"
-        f"Your details go straight to payroll; you don't need to reply to this email.\n\n"
-        f"— Acme Tech Payroll (via Multiplier)\n"
+        text_body.replace(
+            "How: use Add my details below.",
+            f"How: add your details here: {form_url}",
+        )
+        + "\n\n— Acme Tech Payroll (via Multiplier)\n"
     )
     html = f"""\
 <html><body style="font-family:system-ui,sans-serif;color:#111;line-height:1.5">
@@ -63,11 +94,10 @@ def build_reminder_email(
     <span style="vertical-align:middle">◆</span> From Multiplier Payroll
   </p>
   <p>Hi {first},</p>
-  <p>We need your <strong>{fields_label}</strong> to pay you on time. Please add it by
-     <strong>{cutoff_label}</strong>. It takes about a minute:
-     <a href="{form_url}">add your details here</a>.</p>
-  <p><strong>What we need</strong><br/>
-     {fields_label} · needed for payroll</p>
+  <p><strong>What:</strong> your {fields_label}.{f" {detail}" if detail else ""}</p>
+  <p><strong>By when:</strong> {cutoff_label}.</p>
+  <p><strong>Why:</strong> {month} payroll will be missed if this is still missing.</p>
+  <p><strong>How:</strong> use the button. It takes about a minute.</p>
   <p>
     <a href="{form_url}"
        style="display:inline-block;padding:10px 16px;background:#863bff;color:#fff;
@@ -75,11 +105,32 @@ def build_reminder_email(
       Add my details →
     </a>
   </p>
-  <p style="color:#666;font-size:13px">Your details go straight to payroll; you don't need to reply to this email.</p>
+  <p style="color:#666;font-size:13px">You don't need to reply to this email.</p>
   <p style="color:#666;font-size:12px">— Acme Tech Payroll (via Multiplier)</p>
 </body></html>
 """
     return subject, text, html
+
+
+def send_employee_note(*, to_address: str, subject: str, text: str) -> Dict[str, Any]:
+    """Send a short employee note. Returns {sent, error?}."""
+    user = env("SMTP_USER")
+    password = env("SMTP_PASS")
+    if not (user and password and env("DEMO_INBOX") and env("APP_BASE_URL")):
+        return {"sent": False, "error": "smtp_not_configured"}
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = user
+    msg["To"] = to_address
+    msg.attach(MIMEText(text, "plain", "utf-8"))
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=20) as smtp:
+            smtp.starttls()
+            smtp.login(user, password)
+            smtp.sendmail(user, [to_address], msg.as_string())
+        return {"sent": True, "to": to_address, "subject": subject}
+    except Exception as exc:  # noqa: BLE001 — surface to caller / Notifications
+        return {"sent": False, "error": str(exc), "to": to_address, "subject": subject}
 
 
 def send_reminder_email(
@@ -89,6 +140,8 @@ def send_reminder_email(
     fields_label: str,
     form_url: str,
     cutoff_label: str = "Oct 15",
+    month: str = "October",
+    detail: str = "",
 ) -> Dict[str, Any]:
     """Send via Gmail SMTP. Returns {sent, error?}."""
     user = env("SMTP_USER")
@@ -101,6 +154,8 @@ def send_reminder_email(
         fields_label=fields_label,
         form_url=form_url,
         cutoff_label=cutoff_label,
+        month=month,
+        detail=detail,
     )
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject

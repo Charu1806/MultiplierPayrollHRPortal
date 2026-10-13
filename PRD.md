@@ -29,7 +29,7 @@ Creating an employee, a one-time payment, or an exit still writes the payroll sn
 
 A **Sync from Workday** action sits in the Payroll header. It shows the last successful time, whether the run was Manual or Final, who ran it, and a short change summary.
 
-- Manual full sync runs at most once per prototype day (`sync.maxPerDay`). The seed sync does not use that allowance.
+- Manual full sync can run any number of times on the same prototype day. The seed sync is not a manual sync.
 - The scheduled final sync does not use that daily allowance. Running it again does not duplicate change events, the funding snapshot, or the finance email.
 - A failed sync keeps the previous snapshot and the previous success timestamp.
 - A targeted refresh updates one employee from the HR source. It is not a full sync and does not use the daily allowance.
@@ -43,15 +43,15 @@ Engine dates come from `config/cycle.json` and repeat for October 2026, November
 |---|---|---|
 | Add employees, bonuses, hikes, missing details | — | Closes on the 15th. Later adds move to next month |
 | Review window | Review stays open until the 22nd in the engine | 16th–19th on the tracker and in mail |
-| Final report | — | 21st |
+| Final report | — | 20th of the pay month |
 | Inputs, approvals, review close | 22nd | 22nd is the last day. Later changes apply next month |
 | Final sync | 23rd | 23rd also sends the who-will-be-paid report |
-| Add funds | Funding due the 26th | 24th–27th on the tracker. Mail on the 23rd, 25th, and 26th |
-| Payroll submitted | 27th | Named on the deadline card |
-| Pay day | 29th | Named on the tracker and the deadline card |
+| Add funds | Funding due the 26th | 23rd–27th on the tracker, a customer setting. Mail on the 23rd, 25th, 26th, and 27th |
+| Payroll submitted | 28th | The 28th of the pay month |
+| Pay day | 29th | Customer setting on the tracker and the deadline card |
 | Payment returned | Day after pay | Included in the 30th report and in the month-end snapshot |
 
-Stages on the tracker, in order: **Input close → Review window → Final report → Review closed → Funding → Pay day**.
+Stages on the tracker, in order: **Input close → Review window → Final report → Review close → Funding → Payroll submitted → Pay day**. Input close, the review window, the final report, the funding window (23rd–27th), and pay day are customer settings. Multiplier recommends them; the customer can choose other dates. Review close is seven days before pay day and is a deadline imposed by Multiplier. Payroll submitted is the 28th of the pay month. Global and country HR see the same tracker. Funds are added on the day the fund manager clicks Yes. Payroll submitted says Multiplier is calculating the payment.
 
 Before pay day the pay stage counts days left. On pay day it says Today. After pay day it says how many of how many were paid.
 
@@ -72,7 +72,7 @@ The yellow previous-payroll highlight appears only on the 30th and 31st of the p
 
 ## Queues
 
-**Action needed** lists missing, invalid, or incomplete required data for the signed-in scope, with the owner, the deadline, and a way to fix it. Add details and Add details myself open `/people/{id}?panel=missing#missing-details`. When pay is already on track, the profile shows “Thanks for adding your details. Payment is on track.” and does not send a mail.
+**Action needed** lists missing, invalid, or incomplete required data for the signed-in scope, with the owner, the deadline, and a way to fix it. Add details and Add details myself open `/people/{id}?panel=missing#missing-details`. When pay is already on track, the profile shows “Thanks for adding your details. Payment is on track.” The employee is also emailed that the month’s payroll is on track.
 
 **Review & approve** lists compensation changes that need a person, scoped to the country when one is selected. Cards, the carry notice, employees not in the run, and the footer use that same set. Company-wide sign-off is hidden for a country admin. The model may flag a line. It does not approve pay.
 
@@ -88,7 +88,7 @@ On pay day the headline categories do not overlap:
 4. Added after cutoff, so the amount moves to the next cycle.
 5. Payment returned, counted on its own from the day after pay.
 
-The 25th and 26th emails say funds are added. That answer is the demo default. Ignore the mail when funds are already in.
+The 25th, 26th, and 27th emails say funds are added. That answer is the demo default. Ignore the mail when funds are already in.
 
 ## Notifications
 
@@ -104,11 +104,13 @@ Dates below are the day of the open month. October is only the first example.
 | 15 | Employee window is closed |
 | 16 | Review window is open, until the 19th |
 | 19 | Review window closes today. Ignore if nothing is open |
-| 20 | Final report. Three days to work with country admins. Ignore if nothing is open |
+| 20 | Final report. Time remains until review close on the 22nd. Ignore if nothing is open |
 | 22 | Today is the last day. Ignore if nothing is open |
-| 23 | Funding period started, with the amount finance should hold. A second mail is the who-will-be-paid report |
-| 25 | Funds added. Ignore if already added |
-| 26 | Last day to add funds. Ignore if already added |
+| 23 | Funding period started, with the amount finance should hold. A second mail is the who-will-be-paid report. The fund manager also gets a mail with Yes and No |
+| 25 | Funds status. Yes only after the fund manager has confirmed |
+| 26 | One day left in the funding window. Ignore if already added |
+| 27 | Last day to add funds |
+| 28 | Payroll submitted, the 28th of the pay month |
 | 29 | Pay sent: how many paid, how many affected, amount, and why |
 | 30 | Final report of who was actually paid and who missed, including payment returns |
 
@@ -121,8 +123,8 @@ Dates below are the day of the open month. October is only the first example.
 | 16 | Review is open until the 19th |
 | 18, 19 | Same review reminder, escalated. Ignore if nothing to do |
 | 20, 21, 22 | Review window closed. Global is in copy. Inputs can still be added through the 22nd. Ignore if nothing to do |
-| 23 | Ask finance to add funds by the 26th, plus a who-will-be-paid report |
-| 25, 26 | Funds. Global is in copy. Ignore if already added |
+| 23 | Ask finance to add funds by the 27th. The funding window is the 23rd–27th. Plus a who-will-be-paid report |
+| 26, 27 | Funds. Global is in copy. Ignore if already added. The 27th is the last day |
 | 29 | Pay submitted for that country: paid, moved to next cycle, and why |
 | 30 | Who was actually paid, and why anyone missed |
 

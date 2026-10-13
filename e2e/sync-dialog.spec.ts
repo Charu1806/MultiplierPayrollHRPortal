@@ -13,10 +13,9 @@ test('View in Overview closes the sync dialog and opens Overview', async ({ page
   await expect(page).toHaveURL(/\/payroll\/overview$/)
   await expect(page.getByText('Funding', { exact: true })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Synced today' }).click()
+  await page.getByRole('button', { name: /Sync from connector/ }).click()
   const again = page.getByRole('dialog')
-  await expect(again).toContainText('Already synced today')
-  await expect(again).toContainText('Last sync')
+  await expect(again).toContainText('Sync complete', { timeout: 20000 })
   await again.getByRole('button', { name: 'View in Overview' }).click()
   await expect(again).toBeHidden()
   await expect(page).toHaveURL(/\/payroll\/overview$/)

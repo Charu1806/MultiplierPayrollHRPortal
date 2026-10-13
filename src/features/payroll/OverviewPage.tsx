@@ -6,7 +6,7 @@ import { StageTracker } from '@/features/payroll/components/StageTracker'
 import { countryCode, formatIsoDate } from '@/features/payroll/lib/labels'
 import { countryAdmins, cycleDay, personaCountry, type CountryAdmin, type PersonaId } from '@/features/persona'
 import { reviewCards } from '@/features/payroll/lib/scope'
-import type { CountryPaySlice, UpNextItem } from '@/api/types'
+import type { CountryPaySlice } from '@/api/types'
 import { useAppStore } from '@/store'
 
 function QueryMail({
@@ -97,9 +97,11 @@ function cycleFocus(asOf: string, pay: string, submitted: string | null): {
 } {
   const inputClose = cycleDay(pay, 15)
   const reviewBy = cycleDay(pay, 19)
+  const reportDay = cycleDay(pay, 20)
   const closure = cycleDay(pay, 22)
   const inputLabel = formatIsoDate(inputClose)
   const reviewLabel = formatIsoDate(reviewBy)
+  const reportLabel = formatIsoDate(reportDay)
   const closureLabel = formatIsoDate(closure)
   const payLabel = formatIsoDate(pay)
   const submittedLabel = submitted ? formatIsoDate(submitted) : null
@@ -110,7 +112,7 @@ function cycleFocus(asOf: string, pay: string, submitted: string | null): {
   if (asOf <= inputClose) {
     return {
       title: `Add employees, bonuses, hikes, and missing details by ${inputLabel}`,
-      detail: `People added after ${inputLabel} move to next month. Complete review by ${reviewLabel}. Final closure ${closureLabel}.`,
+      detail: `People added after ${inputLabel} move to next month. Complete review by ${reviewLabel}. Final report ${reportLabel}. Final closure ${closureLabel}.`,
       countdown: daysLeft(daysUntil(asOf, inputClose)),
       extra: later,
     }
@@ -118,8 +120,16 @@ function cycleFocus(asOf: string, pay: string, submitted: string | null): {
   if (asOf <= reviewBy) {
     return {
       title: `Complete review by ${reviewLabel}`,
-      detail: `Finish review and approvals by ${reviewLabel}. Final closure is ${closureLabel}. Changes after ${closureLabel} apply next month.`,
+      detail: `Finish review and approvals by ${reviewLabel}. Final report ${reportLabel}. Final closure is ${closureLabel}. Changes after ${closureLabel} apply next month.`,
       countdown: daysLeft(daysUntil(asOf, reviewBy)),
+      extra: later,
+    }
+  }
+  if (asOf <= reportDay) {
+    return {
+      title: `Final report ${reportLabel}`,
+      detail: `The report goes to the Global HR admin and each country HR admin. Final closure is ${closureLabel}.`,
+      countdown: daysLeft(daysUntil(asOf, reportDay)),
       extra: later,
     }
   }
@@ -161,12 +171,14 @@ function SyncSummary({
   needApproval,
   matched,
   willMiss,
+  wrongPay,
 }: {
   country: string | null
   openActions: number
   needApproval: number
   matched: number
   willMiss: number
+  wrongPay: number
 }) {
   const overview = useAppStore((s) => s.overview)
   const asOf = useAppStore((s) => s.asOf)
@@ -191,7 +203,7 @@ function SyncSummary({
       <div
         className={[
           'flex items-start justify-between gap-3 border-b px-4 py-2',
-          willMiss > 0 ? 'border-status-warn-border bg-status-warn-bg' : 'border-border bg-canvas',
+          willMiss > 0 || wrongPay > 0 ? 'border-status-warn-border bg-status-warn-bg' : 'border-border bg-canvas',
         ].join(' ')}
       >
         <div className="min-w-0">
@@ -206,12 +218,23 @@ function SyncSummary({
           {willMiss > 0 ? (
             <button
               type="button"
-              className="mt-1 text-[13px] font-semibold text-text-primary hover:underline"
+              className="mt-1 block text-[13px] font-semibold text-text-primary hover:underline"
               onClick={() =>
                 document.getElementById('countries')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
               }
             >
               {willMiss} will miss payment
+            </button>
+          ) : null}
+          {wrongPay > 0 ? (
+            <button
+              type="button"
+              className="mt-1 block text-[13px] font-semibold text-text-primary hover:underline"
+              onClick={() =>
+                document.getElementById('countries')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }
+            >
+              {wrongPay} will not get the right payment
             </button>
           ) : null}
         </div>
@@ -279,7 +302,7 @@ function SyncSummary({
           Simulated pay: {countryPay.paid} of {countryPay.of} paid ·{' '}
           <OutcomeFix
             count={countryPay.paidPreviousSalary.count}
-            label="at previous salary"
+            label="not the right payment"
             href={countryPay.paidPreviousSalary.href}
           />{' '}
           ·{' '}
@@ -295,7 +318,7 @@ function SyncSummary({
           Simulated pay: {outcomes.paidSuccessfully.count} of {outcomes.paidSuccessfully.of} paid ·{' '}
           <OutcomeFix
             count={outcomes.paidPreviousSalary.count}
-            label="at previous salary"
+            label="not the right payment"
             href={outcomes.paidPreviousSalary.href}
           />{' '}
           ·{' '}
@@ -325,20 +348,6 @@ function countrySummary<T extends { month?: string; tone?: string; byCountry?: R
     (slice.addedAfterCutoff?.count ?? 0) +
     (slice.paymentReturned?.count ?? 0)
   return { ...summary, ...slice, tone: missed ? 'warn' : 'ok' }
-}
-
-function scopeMilestone(item: UpNextItem, country: string | null, actions: number, needs: number): UpNextItem {
-  if (!country || item.kind !== 'milestone') return item
-  if (item.title === 'Input finalisation') {
-    return { ...item, detail: actions === 0 ? 'No issues' : `${actions} action${actions === 1 ? '' : 's'} open` }
-  }
-  if (item.title === 'Review window') {
-    return {
-      ...item,
-      detail: needs === 0 ? 'No issues' : `${needs} line${needs === 1 ? '' : 's'} need your check`,
-    }
-  }
-  return item
 }
 
 function PayrollResultLine({
@@ -371,7 +380,7 @@ function PayrollResultLine({
       </span>
       <OutcomeFix
         count={summary.paidPreviousSalary?.count ?? 0}
-        label="at previous salary"
+        label="not the right payment"
         href={summary.paidPreviousSalary?.href}
       />
       <span> · </span>
@@ -439,67 +448,6 @@ function renderStatusMessage(message: string) {
   })
 }
 
-function UpNextRow({ item }: { item: UpNextItem }) {
-  if (item.kind === 'milestone') {
-    const end = (item as { deadlineEnd?: string }).deadlineEnd
-    const dateLabel = end
-      ? `${formatIsoDate(item.deadline)}–${formatIsoDate(end).replace(/^[A-Za-z]+ /, '')}`
-      : formatIsoDate(item.deadline)
-    const inner = (
-      <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2.5 last:border-b-0">
-        <div className="min-w-0">
-          <p className="text-[13px] font-medium text-text-primary">
-            {dateLabel} · {item.title}
-          </p>
-          <p className="text-xs text-text-secondary">{item.detail}</p>
-        </div>
-        {item.viewOnly ? (
-          <StatusChip tone="neutral">View only</StatusChip>
-        ) : item.href ? (
-          <span className="text-xs font-medium text-status-info-text">Open →</span>
-        ) : null}
-      </div>
-    )
-    if (item.href && !item.viewOnly) {
-      return (
-        <Link to={item.href} className="block hover:bg-surface-recessed">
-          {inner}
-        </Link>
-      )
-    }
-    return inner
-  }
-
-  if (item.kind === 'reminder') {
-    return (
-      <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2.5 last:border-b-0">
-        <div className="min-w-0">
-          <p className="text-[13px] font-medium text-text-primary">{item.title}</p>
-          <p className="text-xs text-text-secondary">
-            {item.owner ?? 'Reminder'} · {formatIsoDate(item.deadline)}
-          </p>
-        </div>
-        <StatusChip tone="neutral">Reminder</StatusChip>
-      </div>
-    )
-  }
-
-  return (
-    <Link
-      to={`/payroll/actions?issue=${item.issueId}`}
-      className="flex items-center justify-between gap-3 border-b border-border px-3 py-2.5 last:border-b-0 hover:bg-surface-recessed"
-    >
-      <div className="min-w-0">
-        <p className="text-[13px] font-medium text-text-primary">{item.title}</p>
-        <p className="text-xs text-text-secondary">
-          {item.who} · due {formatIsoDate(item.deadline)}
-        </p>
-      </div>
-      <span className="text-xs font-medium text-status-info-text">Take action →</span>
-    </Link>
-  )
-}
-
 export function OverviewPage() {
   const overview = useAppStore((s) => s.overview)
   const asOf = useAppStore((s) => s.asOf)
@@ -527,7 +475,6 @@ export function OverviewPage() {
     statusLine,
     cycle,
     countries,
-    upNext,
     reviewMeta,
     dates,
     octoberSummary,
@@ -539,28 +486,37 @@ export function OverviewPage() {
   const totalEmployees = visibleCountries.reduce((sum, c) => sum + c.employeeCount, 0)
 
   function countryMiss(country: string) {
-    const open = issues.filter((issue) => issue.status !== 'resolved' && issue.country === country)
-    const pending = (review?.lines || []).filter((line) => !line.approved && line.country === country)
-    const people = new Set<string>()
-    for (const issue of open) if (issue.employeeId) people.add(issue.employeeId)
-    for (const line of pending) if (line.employeeId) people.add(line.employeeId)
-    return { people: people.size, actions: open.length, approvals: pending.length }
+    const open = issues.filter(
+      (issue) =>
+        issue.status !== 'resolved' &&
+        issue.country === country &&
+        (issue.kind === 'missing_fields' || issue.kind === 'missing_data' || !issue.kind),
+    )
+    const pending = (review?.lines || []).filter(
+      (line) => !line.approved && !line.rejected && line.country === country,
+    )
+    const miss = new Set<string>()
+    const wrong = new Set<string>()
+    for (const issue of open) if (issue.employeeId) miss.add(issue.employeeId)
+    for (const line of pending) if (line.employeeId) wrong.add(line.employeeId)
+    return { people: miss.size, wrong: wrong.size, actions: open.length, approvals: pending.length }
   }
 
   const willMiss = visibleCountries.reduce((sum, row) => sum + countryMiss(row.country).people, 0)
+  const wrongPay = visibleCountries.reduce((sum, row) => sum + countryMiss(row.country).wrong, 0)
   const scopedActions = scopedCountry
     ? issues.filter((issue) => issue.status === 'open' && issue.country === scopedCountry).length
     : statusLine.openActions
   const scopedCards = review ? reviewCards(review, employees, scopedCountry) : null
   const scopedApprovals = scopedCountry
-    ? (review?.lines || []).filter((line) => !line.approved && line.country === scopedCountry).length
+    ? (review?.lines || []).filter((line) => !line.approved && !line.rejected && line.country === scopedCountry).length
     : (review?.badgeCount ?? 0)
   const financeName = company?.financeAdmin?.name || 'Finance'
   const cycleSummary = countrySummary(octoberSummary, scopedCountry)
   const earlierPayrolls = (previousPayrolls || [])
     .map((row) => countrySummary(row, scopedCountry))
     .filter((row): row is NonNullable<typeof row> => Boolean(row?.month))
-  const scopedUpNext = upNext.map((item) => scopeMilestone(item, scopedCountry, scopedActions, scopedCards?.needs ?? 0))
+  const reportOn = formatIsoDate(cycleDay(dates?.payDate || cycle.payDate, 20))
 
   function openCountryView(code: PersonaId, path: string) {
     if (code !== 'global') setPersona(code)
@@ -596,6 +552,7 @@ export function OverviewPage() {
         needApproval={scopedApprovals}
         matched={scopedCards?.matched ?? 0}
         willMiss={willMiss}
+        wrongPay={wrongPay}
       />
 
       {cycleSummary?.month ? (
@@ -649,6 +606,7 @@ export function OverviewPage() {
         dates={stageDates}
         willMiss={willMiss}
         financeName={financeName}
+        fundsAddedOn={overview.fundsAddedOn}
       />
 
       {scopedCountry ? null : (
@@ -658,7 +616,7 @@ export function OverviewPage() {
           <p className="text-xs text-text-secondary">
             {overview.customer.name} · {totalEmployees} employees · {visibleCountries.length}{' '}
             {visibleCountries.length === 1 ? 'country' : 'countries'}
-            {scopedCountry ? ` · ${scopedCountry} only` : ''}
+            {scopedCountry ? ` · ${scopedCountry} only` : ''} · Final report {reportOn}
           </p>
         </div>
         <div className="divide-y divide-border">
@@ -666,7 +624,7 @@ export function OverviewPage() {
             const report = countryMiss(row.country)
             const code = (row.code || countryCode(row.country)) as PersonaId
             const admin = admins.find((item) => item.country === row.country)
-            const onTrack = report.people === 0
+            const onTrack = report.people === 0 && report.wrong === 0
             return (
               <div
                 key={row.country}
@@ -682,7 +640,10 @@ export function OverviewPage() {
                       {row.country} · {row.employeeCount} employees
                     </p>
                     <p className="mt-0.5 text-xs text-text-secondary">
-                      {onTrack ? 'Payroll is on track.' : `${report.people} will miss payment.`}
+                      {onTrack ? 'Payroll is on track.' : null}
+                      {report.people > 0 ? `${report.people} will miss payment.` : null}
+                      {report.people > 0 && report.wrong > 0 ? ' ' : null}
+                      {report.wrong > 0 ? `${report.wrong} will not get the right payment.` : null}
                       {report.actions > 0 ? (
                         <>
                           {' '}
@@ -755,33 +716,6 @@ export function OverviewPage() {
           </div>
         </section>
       ) : null}
-
-      <section className="rounded border border-border bg-surface">
-        <div className="border-b border-border px-4 py-3">
-          <h2 className="text-sm font-semibold text-text-primary">Up next</h2>
-          <p className="text-xs text-text-secondary">Upcoming deadlines, ordered by date</p>
-        </div>
-        <div>
-          {scopedUpNext.length === 0 ? (
-            <div className="px-4 py-8 text-center text-xs text-text-secondary">
-              Nothing queued – payroll is on track
-            </div>
-          ) : (
-            scopedUpNext.map((item, index) => (
-              <UpNextRow
-                key={
-                  item.kind === 'milestone'
-                    ? `${item.title}-${item.deadline}`
-                    : item.kind === 'issue'
-                      ? item.issueId
-                      : `${item.title}-${item.deadline}-${index}`
-                }
-                item={item}
-              />
-            ))
-          )}
-        </div>
-      </section>
     </div>
   )
 }

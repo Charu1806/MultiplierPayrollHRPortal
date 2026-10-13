@@ -156,6 +156,45 @@ def variance(store: Store, customer_id: str, as_of: str) -> Optional[Dict[str, A
     return parts
 
 
+def funding_decision_view(store: Store, customer_id: str, cycle_key: str, as_of: str) -> Dict[str, Any]:
+    row = store.funding_decision_as_of(customer_id, cycle_key, as_of)
+    if not row:
+        return {"decision": None, "decidedOn": None, "fundsAddedOn": None, "cycleKey": cycle_key}
+    added = row["decided_on"] if row["decision"] == "yes" else None
+    return {
+        "decision": row["decision"],
+        "decidedOn": row["decided_on"],
+        "fundsAddedOn": added,
+        "cycleKey": cycle_key,
+    }
+
+
+def funds_added_on(store: Store, customer_id: str, cycle_key: str, as_of: str) -> Optional[str]:
+    return funding_decision_view(store, customer_id, cycle_key, as_of)["fundsAddedOn"]
+
+
+def record_funding_decision(
+    store: Store, customer_id: str, as_of: str, decision: str, cycle_key: Optional[str] = None
+) -> Dict[str, Any]:
+    """The prototype date of a Yes click is the day funds are added for that pay month."""
+    from domain.calendar_rules import cycle_dates
+    from domain.config import company_config
+
+    if decision not in ("yes", "no"):
+        raise ValueError("Choose Yes or No")
+    current = cycle_dates(as_of)
+    key = cycle_key or current.get("key")
+    known = (cycle_config().get("cycles") or {})
+    if key not in known:
+        raise ValueError("Unknown pay month")
+    window_start = str(known[key].get("payDate") or "")[:8] + "23"
+    if as_of[:10] < window_start:
+        raise ValueError("The funding window has not started")
+    name = ((company_config().get("financeAdmin") or {}).get("name")) or "Fund manager"
+    store.add_funding_decision(customer_id, key, decision, as_of[:10], name)
+    return funding_decision_view(store, customer_id, key, as_of)
+
+
 def employee_rows_for_snapshot(store: Store, customer_id: str, as_of: str) -> List[Dict[str, Any]]:
     return [
         {

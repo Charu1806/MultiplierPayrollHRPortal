@@ -152,7 +152,7 @@ def test_cycle_dates(conn):
     assert c["input_finalisation"] == "2026-10-22"
     assert c["approval_date"] == "2026-10-22"
     assert c["funding_due"] == "2026-10-26"
-    assert c["submitted_date"] == "2026-10-27"
+    assert c["submitted_date"] == "2026-10-28"
     assert c["pay_date"] == "2026-10-29"
     assert c["approved"] == 0
 

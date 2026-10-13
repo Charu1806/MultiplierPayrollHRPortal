@@ -278,7 +278,7 @@ sequenceDiagram
     Issue-->>API: rollups
     Cal-->>API: stage, countdown
     API-->>UI: overview DTO
-    UI-->>Admin: status line, tracker, countries, Up next
+    UI-->>Admin: status line, tracker, countries
 ```
 
 ### 7.2 Resolve blocking issue (Lena)
@@ -470,7 +470,7 @@ Full register → diff → match sources → auto-matched vs needs human check �
 
 ### 10.3 Notifications
 
-The Notification Service builds three calendars from the open cycle’s month: Global HR admin, each country HR admin, and employees who still have missing details. Subjects and dates use that month. The inbox filters by the signed-in persona. Add-details links open the missing-details form. Slack = V2. In-app alerts = V3.
+The Notification Service builds three calendars from the open cycle’s month: Global HR admin, each country HR admin, and employees who still have missing details. Subjects and dates use that month. The inbox filters by the signed-in persona. Add-details links open the missing-details form. AI Voice call and Slack = V2, in that order on Notifications. In-app alerts = V3.
 
 ---
 
@@ -488,7 +488,7 @@ Desktop 1440px. HR shell neutral; Payroll pages Multiplier-branded. Routes are *
 | `/people/add` | `hr_tool_people_add_employee` | employees + documents |
 | `/people/:id` | `hr_tool_people_priya_nair` | employee + journey |
 
-Greyed stubs (AI assistant V2, AI assisted voice call V2, Finance view V3, Employee payroll tool V3, Slack V2) stay client-side until their APIs exist.
+Greyed stubs (AI assistant V2, Finance view V3, Employee payroll tool V3, Slack V2, AI Voice call V2 on Notifications) stay client-side until their APIs exist.
 
 **UI stack:** React, TypeScript, Vite, Tailwind (`DESIGN.md`), React Router, Zustand cache, `lucide-react`.
 
@@ -551,7 +551,7 @@ Edge-case rules are locked in `tests/` + `data/domain/` and must hold in service
 | Version | Backend / API | UI |
 |---|---|---|
 | **V1** | Calendar, Connector, Validation, Issue, Review, Notification (email), Submission; Clarity API as above | Payroll tab + panel |
-| **V2** | Slack channel; write-back to HRIS; AI assistant and voice-call endpoints | Mobile; Slack tab; assistant nav; AI assisted voice call |
+| **V2** | Slack channel; write-back to HRIS; AI assistant and voice-call endpoints | Mobile; Slack tab; AI Voice call tab; assistant nav |
 | **V3** | Finance APIs; employee payroll tool; guided-fix workflows | Finance view; Employee payroll tool; guided steps |
 
 ---

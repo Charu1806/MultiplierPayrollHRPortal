@@ -2,6 +2,7 @@ import { Lock } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { formatIsoDate } from '@/features/payroll/lib/labels'
 import { cycleDay } from '@/features/persona'
+import { useAppStore } from '@/store'
 
 type StageState = 'upcoming' | 'current' | 'locked' | 'done' | 'paid'
 
@@ -10,7 +11,11 @@ type StageBox = {
   dateLabel: string
   state: StageState
   status: string
+  action?: string
+  note?: string
   href?: string
+  /** Customer-chosen date, a Multiplier deadline, or a date derived from pay day. */
+  owner?: 'customer' | 'multiplier' | 'calculated'
 }
 
 type CycleDates = {
@@ -40,6 +45,14 @@ type Props = {
   dates: CycleDates
   willMiss?: number
   financeName?: string
+  fundsAddedOn?: string | null
+}
+
+function daysBefore(iso: string, days: number): string {
+  const [year, month, day] = iso.split('-').map(Number)
+  const date = new Date(Date.UTC(year, month - 1, day))
+  date.setUTCDate(date.getUTCDate() - days)
+  return date.toISOString().slice(0, 10)
 }
 
 function buildStages(
@@ -54,6 +67,7 @@ function buildStages(
   DATES: CycleDates,
   willMiss = 0,
   financeName = 'Finance',
+  fundsAddedOn: string | null = null,
 ): StageBox[] {
   void openActions
   void payOutcomes
@@ -62,87 +76,147 @@ function buildStages(
   void needsCheck
   void closedWithoutSignOff
   void unappliedCount
-  const inputClose = cycleDay(DATES.pay, 15)
-  const reviewStart = cycleDay(DATES.pay, 16)
-  const reviewEnd = cycleDay(DATES.pay, 19)
-  const finalReport = cycleDay(DATES.pay, 21)
-  const reviewClosed = cycleDay(DATES.pay, 22)
-  const fundStart = cycleDay(DATES.pay, 24)
-  const fundEnd = cycleDay(DATES.pay, 27)
   const payDay = DATES.pay
+  const inputClose = cycleDay(payDay, 15)
+  const reviewStart = cycleDay(payDay, 16)
+  const reviewEnd = cycleDay(payDay, 19)
+  const finalReport = cycleDay(payDay, 20)
+  const reviewClosed = daysBefore(payDay, 7)
+  const fundStart = cycleDay(payDay, 23)
+  const fundEnd = cycleDay(payDay, 27)
+  const submittedOn = cycleDay(payDay, 28)
+  const fundsIn = Boolean(fundsAddedOn && asOf >= fundsAddedOn)
   const payLeft = Math.round(
     (Date.parse(`${payDay}T00:00:00Z`) - Date.parse(`${asOf}T00:00:00Z`)) / 86400000,
   )
   const paidCount = payOutcomes?.paidSuccessfully
   const miss = willMiss > 0 ? `${willMiss} will miss payment` : 'On track'
   const missHref = willMiss > 0 ? '/payroll/actions' : undefined
-  const span = (start: string, end: string): StageState =>
-    asOf < start ? 'upcoming' : asOf <= end ? 'current' : 'done'
+  const phase =
+    asOf <= inputClose
+      ? 'input'
+      : asOf <= reviewEnd
+        ? 'review'
+        : asOf <= finalReport
+          ? 'report'
+          : asOf <= reviewClosed
+            ? 'closed'
+            : asOf < submittedOn
+              ? 'funding'
+              : asOf < payDay
+                ? 'submitted'
+                : asOf <= payDay
+                  ? 'pay'
+                  : 'after'
+  const order = ['input', 'review', 'report', 'closed', 'funding', 'submitted', 'pay']
+  const nowIndex = order.indexOf(phase)
+  const stateFor = (key: string): StageState => {
+    if (phase === 'after') return key === 'pay' ? 'paid' : 'done'
+    const index = order.indexOf(key)
+    if (index < nowIndex) return 'done'
+    if (index === nowIndex) return 'current'
+    return 'upcoming'
+  }
+  const payStatus =
+    payLeft > 1
+      ? `${payLeft} days left`
+      : payLeft === 1
+        ? '1 day left'
+        : payLeft === 0
+          ? 'Today'
+          : paidCount
+            ? `Paid ${paidCount.count} of ${paidCount.of}`
+            : 'Paid'
 
   return [
     {
       key: 'Input close',
       dateLabel: formatIsoDate(inputClose),
-      state: span(inputClose, inputClose),
-      status:
-        asOf <= inputClose
-          ? `New employees close ${formatIsoDate(inputClose)}`
-          : `Closed ${formatIsoDate(inputClose)} ✓`,
+      state: stateFor('input'),
+      action: 'Add employees',
+      note: 'Add employees, bonuses, and missing details. Later adds move to next month.',
+      owner: 'customer',
+      status: asOf <= inputClose ? 'Add employees' : `Closed ${formatIsoDate(inputClose)} ✓`,
+      href: asOf <= inputClose ? '/people/add' : undefined,
     },
     {
       key: 'Review window',
       dateLabel: `${formatIsoDate(reviewStart)}–${formatIsoDate(reviewEnd).replace(/^[A-Za-z]+ /, '')}`,
-      state: span(reviewStart, reviewEnd),
-      status: miss,
-      href: missHref,
+      state: stateFor('review'),
+      action: 'Complete review',
+      owner: 'customer',
+      status: asOf < reviewStart ? `Opens ${formatIsoDate(reviewStart)}` : miss,
+      href: asOf >= reviewStart && asOf <= reviewEnd ? '/payroll/review' : missHref,
     },
     {
       key: 'Final report',
       dateLabel: formatIsoDate(finalReport),
-      state: span(finalReport, finalReport),
-      status: willMiss > 0 ? `${willMiss} will miss this window` : 'On track',
-      href: missHref,
+      state: stateFor('report'),
+      action: 'Check the report',
+      owner: 'customer',
+      status: asOf > finalReport ? (willMiss > 0 ? `${willMiss} will miss this window` : 'On track') : `On ${formatIsoDate(finalReport)}`,
+      href: asOf === finalReport || (asOf > reviewEnd && asOf <= finalReport) ? '/payroll/overview' : missHref,
     },
     {
-      key: 'Review closed',
+      key: 'Review close',
       dateLabel: formatIsoDate(reviewClosed),
-      state: span(reviewClosed, reviewClosed),
-      status: miss,
-      href: missHref,
+      state: stateFor('closed'),
+      action: 'Final closure',
+      owner: 'calculated',
+      note: 'Deadline imposed by Multiplier.',
+      status: asOf > reviewClosed ? miss : `By ${formatIsoDate(reviewClosed)}`,
+      href: asOf === reviewClosed ? '/payroll/actions' : missHref,
     },
     {
       key: 'Funding',
       dateLabel: `${formatIsoDate(fundStart)}–${formatIsoDate(fundEnd).replace(/^[A-Za-z]+ /, '')}`,
-      state: span(fundStart, fundEnd),
+      state: stateFor('funding'),
+      action: fundsIn
+        ? `Funds added ${formatIsoDate(fundsAddedOn || '')} · ${financeName} ✓`
+        : `Add funds · ${financeName}`,
+      owner: 'customer',
+      status: fundsIn
+        ? `Funds added ${formatIsoDate(fundsAddedOn || '')} · ${financeName} ✓`
+        : `Add funds · ${financeName}`,
+    },
+    {
+      key: 'Payroll submitted',
+      dateLabel: formatIsoDate(submittedOn),
+      state: stateFor('submitted'),
+      action: 'Payroll submitted',
+      owner: 'calculated',
+      note: 'The 28th of the pay month. Multiplier calculating the payment.',
       status:
-        asOf > fundEnd
-          ? `Funds added · ${financeName} ✓`
-          : `Add funds · ${financeName}`,
+        asOf > submittedOn ? `Submitted ${formatIsoDate(submittedOn)} ✓` : `On ${formatIsoDate(submittedOn)}`,
     },
     {
       key: 'Pay day',
       dateLabel: formatIsoDate(payDay),
-      state: payLeft > 1 ? 'upcoming' : payLeft >= 0 ? 'current' : 'paid',
-      status:
-        payLeft > 1
-          ? `${payLeft} days left`
-          : payLeft === 1
-            ? '1 day left'
-            : payLeft === 0
-              ? 'Today'
-              : paidCount
-                ? `Paid ${paidCount.count} of ${paidCount.of}`
-                : 'Paid',
+      state: stateFor('pay'),
+      action: payStatus,
+      owner: 'customer',
+      status: payStatus,
     },
   ]
 }
 
 const stateClass: Record<StageState, string> = {
   upcoming: 'border-border bg-surface-recessed text-text-secondary',
-  current: 'border-status-info-border bg-status-info-bg text-status-info-text',
+  current: 'border-sky-600 bg-sky-50 text-sky-950 ring-1 ring-sky-600',
   locked: 'border-status-danger-border bg-status-danger-bg text-status-danger-text',
   done: 'border-status-ok-border bg-status-ok-bg text-status-ok-text',
   paid: 'border-status-ok-border bg-status-ok-bg text-status-ok-text',
+}
+
+export function FinalReportNote() {
+  const overview = useAppStore((s) => s.overview)
+  const pay = overview?.dates?.payDate || overview?.cycle?.payDate
+  if (!pay) return null
+  return (
+    <p className="text-xs text-text-secondary">
+      Final report <span className="font-medium text-text-primary">{formatIsoDate(cycleDay(pay, 20))}</span>
+    </p>
+  )
 }
 
 export function StageTracker({
@@ -157,6 +231,7 @@ export function StageTracker({
   dates,
   willMiss = 0,
   financeName,
+  fundsAddedOn,
 }: Props) {
   const stages = buildStages(
     asOf,
@@ -170,6 +245,7 @@ export function StageTracker({
     dates,
     willMiss,
     financeName,
+    fundsAddedOn,
   )
 
   return (
@@ -178,8 +254,14 @@ export function StageTracker({
         <p className="text-xs font-medium uppercase tracking-wide text-text-secondary">
           Stage tracker
         </p>
+        <p className="mt-1 text-xs text-text-secondary">
+          Input close, the review window, the final report, the funding window, and pay day are your settings.
+          Multiplier recommends them; you can choose other dates. Review close is a deadline imposed by Multiplier,
+          calculated back from pay day. Payroll submitted is the 28th of the pay month. Funds are
+          added on the day the fund manager clicks Yes.
+        </p>
       </div>
-      <div className="grid grid-cols-6 gap-2">
+      <div className="grid grid-cols-7 gap-2">
         {stages.map((stage) => {
           const locked = stage.state === 'locked' || stage.state === 'done' || stage.state === 'paid'
           const body = (
@@ -191,19 +273,45 @@ export function StageTracker({
                 {locked ? <Lock size={12} className="mt-0.5 shrink-0 opacity-80" /> : null}
               </div>
               <p className="mt-1 tabular text-[11px] font-medium opacity-90">{stage.dateLabel}</p>
-              <p className="mt-1 text-[11px] leading-snug opacity-90">{stage.status}</p>
+              {stage.owner === 'customer' ? (
+                <p className="mt-1 text-[10px] font-medium uppercase tracking-wide opacity-80">Your setting</p>
+              ) : null}
+              {stage.owner === 'multiplier' ? (
+                <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-[#863bff]">
+                  Set by Multiplier
+                </p>
+              ) : null}
+              {stage.owner === 'multiplier' || stage.owner === 'calculated' ? (
+                <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-[#863bff]">From pay day</p>
+              ) : null}
+              <p
+                className={[
+                  'mt-1 text-[11px] leading-snug',
+                  stage.state === 'current' ? 'text-[12px] font-semibold text-sky-800' : 'opacity-90',
+                ].join(' ')}
+              >
+                {stage.state === 'current' && stage.action ? stage.action : stage.status}
+              </p>
+              {stage.note ? (
+                <p className="mt-1 text-[11px] leading-snug opacity-90">{stage.note}</p>
+              ) : null}
             </>
           )
           const cls = `block min-h-[88px] rounded border px-2.5 py-2 ${stateClass[stage.state]}`
           if (stage.href) {
             return (
-              <Link key={stage.key} to={stage.href} className={`${cls} hover:opacity-90`}>
+              <Link
+                key={stage.key}
+                to={stage.href}
+                data-current={stage.state === 'current' ? 'true' : undefined}
+                className={`${cls} hover:opacity-90`}
+              >
                 {body}
               </Link>
             )
           }
           return (
-            <div key={stage.key} className={cls}>
+            <div key={stage.key} data-current={stage.state === 'current' ? 'true' : undefined} className={cls}>
               {body}
             </div>
           )

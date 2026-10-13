@@ -102,7 +102,7 @@ def test_earlier_date_does_not_pull_a_later_sync(api_client):
     assert earlier["lastSync"]["syncedAt"].startswith("2026-10-01")
     assert earlier["lastSync"]["userInitiated"] is False
     same_day = api_client.get("/api/sync?asOf=2026-11-06", headers=HEADERS).json
-    assert same_day["manualRemaining"] == 0
+    assert same_day["manualRemaining"] == 1
     assert same_day["lastSync"]["syncedAt"].startswith("2026-11-06")
 
 
@@ -114,16 +114,14 @@ def test_seed_sync_does_not_use_the_oct_1_allowance(api_client):
     assert first.status_code == 200
 
 
-def test_manual_sync_daily_limit(api_client):
+def test_manual_sync_can_run_again_the_same_day(api_client):
     first = api_client.post("/api/sync?asOf=2026-10-12", headers=HEADERS, json={"trigger": "Manual"})
     assert first.status_code == 200
     second = api_client.post("/api/sync?asOf=2026-10-12", headers=HEADERS, json={"trigger": "Manual"})
-    assert second.status_code == 429
+    assert second.status_code == 200
     status = api_client.get("/api/sync?asOf=2026-10-12", headers=HEADERS).json
-    assert status["manualUsedToday"] == 1
-    assert status["manualRemaining"] == 0
-    next_day = api_client.post("/api/sync?asOf=2026-10-13", headers=HEADERS, json={"trigger": "Manual"})
-    assert next_day.status_code == 200
+    assert status["manualUsedToday"] == 2
+    assert status["manualRemaining"] == 1
 
 
 def test_final_sync_is_idempotent_and_does_not_use_the_manual_allowance(api_client):
@@ -186,7 +184,6 @@ def test_late_change_is_next_cycle(api_client):
     )
     synced = api_client.post("/api/sync?asOf=2026-10-24", headers=HEADERS, json={"trigger": "Manual"})
     assert synced.status_code == 200
-    assert synced.json["changed"] == 0
     assert _james_snapshot(api_client, "2026-10-24")["payrollSnapshot"]["baseSalary"] == before
     overview = api_client.get("/api/cycles/current/overview?asOf=2026-10-24", headers=HEADERS)
     late = next(row for row in overview.json["recentChanges"] if row["employeeId"] == "emp_james")
@@ -209,13 +206,13 @@ def test_headline_counts_reconcile_and_deadlines_match(api_client):
     assert milestones["Input finalisation"]["deadline"] == deadline
     assert milestones["Review window"]["deadlineEnd"] == deadline
     assert overview["cycle"]["fundingDue"] == "2026-10-26"
-    assert overview["cycle"]["submitted"] == "2026-10-27"
+    assert overview["cycle"]["submitted"] == "2026-10-28"
     assert overview["cycle"]["payDate"] == "2026-10-29"
     assert milestones["Funding (finance)"]["deadline"] == "2026-10-26"
-    assert milestones["Payroll submitted"]["deadline"] == "2026-10-27"
+    assert milestones["Payroll submitted"]["deadline"] == "2026-10-28"
     assert milestones["Pay day"]["deadline"] == "2026-10-29"
     assert overview["dates"]["fundingDue"] == "2026-10-26"
-    assert overview["dates"]["submitted"] == "2026-10-27"
+    assert overview["dates"]["submitted"] == "2026-10-28"
     assert overview["dates"]["payDate"] == "2026-10-29"
     issues = api_client.get("/api/issues?asOf=2026-10-12&status=open", headers=HEADERS).json["issues"]
     assert {i["id"] for i in issues} == {"issue_001", "issue_003"}
@@ -309,7 +306,7 @@ def test_november_prototype_date_uses_the_november_deadline(api_client):
     assert overview["cycle"]["inputDeadline"] == "2026-11-22"
     assert overview["cycle"]["finalSync"] == "2026-11-23"
     assert overview["cycle"]["fundingDue"] == "2026-11-26"
-    assert overview["cycle"]["submitted"] == "2026-11-27"
+    assert overview["cycle"]["submitted"] == "2026-11-28"
     assert overview["cycle"]["payDate"] == "2026-11-29"
     assert overview["payOutcomes"] is None
     assert overview["readiness"]["reconciles"] is True
@@ -339,8 +336,8 @@ def test_deadline_reminders_follow_configured_offsets(api_client):
     funding = [n for n in finance if n.get("recipient") == "Finance" and n.get("sendDate") == "2026-10-26"]
     assert funding
     assert "Add funds" in funding[0]["subject"]
-    submitted = api_client.get("/api/notifications?asOf=2026-10-27", headers=HEADERS).json["notifications"]
-    assert any(n["subject"] == "Payroll submitted" and n["sendDate"] == "2026-10-27" for n in submitted)
+    submitted = api_client.get("/api/notifications?asOf=2026-10-28", headers=HEADERS).json["notifications"]
+    assert any(n["subject"] == "Payroll submitted" and n["sendDate"] == "2026-10-28" for n in submitted)
     paid = api_client.get("/api/notifications?asOf=2026-10-29", headers=HEADERS).json["notifications"]
     assert any(n["kind"] == "paid" and n["sendDate"] == "2026-10-29" for n in paid)
     assert all(n.get("kind") != "paid" or n.get("sendDate") != "2026-10-28" for n in paid)
@@ -428,7 +425,10 @@ def test_persona_reports_use_the_month_milestones(api_client):
     employee_early = [n for n in early if n.get("audience") == "employee"]
     assert employee_early
     assert {n["sendDate"] for n in employee_early} == {"2026-10-10"}
-    assert "miss payment this cycle" in (employee_early[0].get("bodySummary") or "")
+    early_body = employee_early[0].get("bodySummary") or ""
+    assert "What:" in early_body and "By when: Oct 15" in early_body
+    assert "October payroll will be missed" in early_body and "How:" in early_body
+    assert (employee_early[0].get("subject") or "").endswith("by Oct 15 or October payroll will be missed")
 
     later = api_client.get("/api/notifications?asOf=2026-10-22", headers=HEADERS).json["notifications"]
     global_reports = [n for n in later if n.get("audience") == "global"]
@@ -442,7 +442,7 @@ def test_persona_reports_use_the_month_milestones(api_client):
     }
     final_report = next(n for n in global_reports if n["sendDate"] == "2026-10-20")
     assert (final_report.get("bodySummary") or "").startswith("You can ignore this if nothing is still open.")
-    assert "3 days" in (final_report.get("bodySummary") or "")
+    assert "until Oct 22" in (final_report.get("bodySummary") or "")
     assert "Open overview" in (final_report.get("ctaLabel") or "")
     india = [n for n in later if n.get("audience") == "country" and n.get("country") == "India"]
     assert {n["sendDate"] for n in india} == {
@@ -466,7 +466,7 @@ def test_persona_reports_use_the_month_milestones(api_client):
     employees = [n for n in later if n.get("audience") == "employee"]
     assert employees
     assert {n["sendDate"] for n in employees} <= {"2026-10-10", "2026-10-13", "2026-10-14", "2026-10-15"}
-    assert "miss payment this cycle" in (employees[0].get("bodySummary") or "")
+    assert "October payroll will be missed" in (employees[0].get("bodySummary") or "")
 
     paid = api_client.get("/api/notifications?asOf=2026-10-29", headers=HEADERS).json["notifications"]
     global_paid = [n for n in paid if n.get("audience") == "global"]
@@ -480,6 +480,8 @@ def test_persona_reports_use_the_month_milestones(api_client):
         "2026-10-23",
         "2026-10-25",
         "2026-10-26",
+        "2026-10-27",
+        "2026-10-28",
         "2026-10-29",
     }
     oct_23 = [n for n in global_paid if n["sendDate"] == "2026-10-23"]
@@ -496,7 +498,7 @@ def test_persona_reports_use_the_month_milestones(api_client):
     assert any("add funds" in (n.get("subject") or "").lower() for n in india_23)
     assert any("will be paid" in (n.get("bodySummary") or "") for n in india_23)
     added = next(n for n in global_paid if n["sendDate"] == "2026-10-25")
-    assert "Funds added: Yes" in (added.get("bodySummary") or "")
+    assert "Funds added: No" in (added.get("bodySummary") or "")
     payday = next(n for n in global_paid if n["sendDate"] == "2026-10-29")
     assert "Amount paid:" in (payday.get("bodySummary") or "")
     assert "were affected" in (payday.get("bodySummary") or "")
@@ -517,7 +519,71 @@ def test_persona_reports_use_the_month_milestones(api_client):
         if n.get("audience") == "country" and n.get("country") == "India" and n["sendDate"] == "2026-10-30"
     )
     assert "were paid" in (india_close.get("bodySummary") or "")
-    assert "missed payment" in (india_close.get("bodySummary") or "")
+    assert "did not get the right payment" in (india_close.get("bodySummary") or "")
+
+
+def test_fund_manager_yes_sets_the_day_funds_are_added(api_client):
+    before = api_client.get("/api/cycles/current/overview?asOf=2026-10-24", headers=HEADERS)
+    assert before.json.get("fundsAddedOn") is None
+    notes = api_client.get("/api/notifications?asOf=2026-10-24", headers=HEADERS).json["notifications"]
+    finance = next(n for n in notes if n.get("audience") == "finance")
+    assert finance["sendDate"] == "2026-10-23"
+    assert "confirm funds" in finance["subject"]
+    detail = api_client.get(f"/api/notifications/{finance['id']}?asOf=2026-10-24", headers=HEADERS)
+    assert detail.json["fundingConfirm"]["decision"] is None
+    assert detail.json["fundingConfirm"]["cycleKey"] == "october"
+
+    early = api_client.post(
+        "/api/funding/decision?asOf=2026-10-22",
+        headers=HEADERS,
+        json={"decision": "yes", "cycleKey": "october"},
+    )
+    assert early.status_code == 400
+
+    yes = api_client.post(
+        "/api/funding/decision?asOf=2026-10-24",
+        headers=HEADERS,
+        json={"decision": "yes", "cycleKey": "october"},
+    )
+    assert yes.status_code == 200
+    assert yes.json["fundsAddedOn"] == "2026-10-24"
+    overview = api_client.get("/api/cycles/current/overview?asOf=2026-10-24", headers=HEADERS)
+    assert overview.json["fundsAddedOn"] == "2026-10-24"
+    earlier = api_client.get("/api/cycles/current/overview?asOf=2026-10-23", headers=HEADERS)
+    assert earlier.json.get("fundsAddedOn") is None
+    later_notes = api_client.get("/api/notifications?asOf=2026-10-26", headers=HEADERS).json["notifications"]
+    added = next(n for n in later_notes if n.get("audience") == "global" and n["sendDate"] == "2026-10-25")
+    assert "Funds added: Yes, on Oct 24" in (added.get("bodySummary") or "")
+    day26 = next(n for n in later_notes if n.get("audience") == "global" and n["sendDate"] == "2026-10-26")
+    assert "Funds added: Yes, on Oct 24" in (day26.get("bodySummary") or "")
+    confirmed = api_client.get(f"/api/notifications/{finance['id']}?asOf=2026-10-24", headers=HEADERS)
+    assert "Funds were added on Oct 24" in (confirmed.json.get("bodySummary") or "")
+
+    no = api_client.post(
+        "/api/funding/decision?asOf=2026-10-26",
+        headers=HEADERS,
+        json={"decision": "no", "cycleKey": "october"},
+    )
+    assert no.status_code == 200
+    assert no.json["fundsAddedOn"] is None
+    still = api_client.get("/api/cycles/current/overview?asOf=2026-10-24", headers=HEADERS)
+    assert still.json["fundsAddedOn"] == "2026-10-24"
+    cleared = api_client.get("/api/cycles/current/overview?asOf=2026-10-26", headers=HEADERS)
+    assert cleared.json.get("fundsAddedOn") is None
+    after_no = api_client.get("/api/notifications?asOf=2026-10-26", headers=HEADERS).json["notifications"]
+    day26_no = next(n for n in after_no if n.get("audience") == "global" and n["sendDate"] == "2026-10-26")
+    assert "Funds added: No" in (day26_no.get("bodySummary") or "")
+
+    november = api_client.post(
+        "/api/funding/decision?asOf=2026-11-23",
+        headers=HEADERS,
+        json={"decision": "yes", "cycleKey": "november"},
+    )
+    assert november.status_code == 200
+    nov = api_client.get("/api/cycles/current/overview?asOf=2026-11-23", headers=HEADERS)
+    assert nov.json["fundsAddedOn"] == "2026-11-23"
+    october = api_client.get("/api/cycles/current/overview?asOf=2026-10-24", headers=HEADERS)
+    assert october.json["fundsAddedOn"] == "2026-10-24"
 
 
 def test_alt_dataset_exposes_the_sync_keys():

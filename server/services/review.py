@@ -18,6 +18,7 @@ from domain.calendar_rules import (  # noqa: E402
     cycle_dates,
     cycle_for_new_input,
     next_cycle_dates,
+    previous_cycle_dates,
     parse_date,
     review_bounds,
     review_countdown,
@@ -45,7 +46,9 @@ class AiCheckRequired(Exception):
 
 
 def _line_dto(store: Store, r: Dict[str, Any], as_of: str) -> Dict[str, Any]:
-    approval = store.line_approval(r["id"], as_of)
+    decision = store.line_decision(r["id"], as_of)
+    rejected = bool(decision and (decision.get("decision") or "approved") == "rejected")
+    approval = None if rejected else decision
     source = r["matching_source"]
     issue_id = r.get("linked_issue_id")
     if issue_id and r.get("matching_source_resolved"):
@@ -61,10 +64,11 @@ def _line_dto(store: Store, r: Dict[str, Any], as_of: str) -> Dict[str, Any]:
         "whyFlagged": r["why_flagged"],
         "matchingSource": source,
         "origin": r.get("origin") or "seed",
-        "needsHumanCheck": approval is None,
+        "needsHumanCheck": decision is None,
         "approved": approval is not None,
-        "approvedOn": approval["approved_on"] if approval else None,
-        "approvedBy": approval["approved_by"] if approval else None,
+        "rejected": rejected,
+        "approvedOn": decision["approved_on"] if decision else None,
+        "approvedBy": decision["approved_by"] if decision else None,
         "openHref": f"/people/{r['employee_id']}?panel=salary" if r.get("employee_id") else "/people",
     }
     if r.get("requires_employee_notified"):
@@ -91,35 +95,39 @@ def attach_llm_decisions(lines: List[Dict[str, Any]], *, force: bool = False) ->
 
 
 def _unapplied(store: Store, lines: List[Dict[str, Any]], as_of: str) -> List[Dict[str, Any]]:
-    """Unapproved need-check lines → paid at September; arrears or recovery in November."""
-    next_c = next_cycle_dates("2026-10-23")
-    next_open = short_date(next_c["reviewOpen"])
-    next_close = short_date(next_c["reviewClose"])
+    """Unapproved lines: old base pay is deposited; the difference lands in the next cycle."""
+    current = cycle_dates(as_of)
+    nxt = next_cycle_dates(as_of)
+    this_month = _month_name(current.get("label") or "")
+    next_month = _month_name(nxt.get("label") or "")
+    next_open = short_date(nxt["reviewOpen"])
+    next_close = short_date(nxt["reviewClose"])
     out: List[Dict[str, Any]] = []
     for line in lines:
-        if line.get("approved"):
+        if line.get("approved") or line.get("rejected"):
             continue
         eid = line.get("employeeId")
         emp = store.get_employee(eid) if eid else None
         if not emp:
             continue
-        row = _live_carry_row(store, emp, as_of, pay_month="October")
+        row = _live_carry_row(store, emp, as_of, pay_month=this_month)
         if not row:
             continue
-        currency = emp.get("currency") or "£"
-        sept = rules_svc.fmt_money(currency, emp["september_pay"])
+        currency = emp.get("currency") or ""
+        old_base = rules_svc.fmt_money(currency, float(emp.get("september_pay") or 0))
         kind = row["kind"]
         amt = rules_svc.fmt_money(currency, row["amount"])
-        if kind == "arrears":
-            note = f"paid {sept} in October · {amt} added as arrears in November review"
-        else:
-            note = f"paid {sept} in October · {amt} to be recovered in November review"
+        kind_label = "an arrear" if kind == "arrears" else "a deductible"
+        note = (
+            f"old base pay {old_base} deposited in {this_month} · "
+            f"{amt} taken as {kind_label} in {next_month}"
+        )
         out.append(
             {
                 "id": eid,
                 "name": line["employeeName"],
                 "href": line.get("openHref") or "/people",
-                "septemberPay": sept,
+                "septemberPay": old_base,
                 "changeSummary": line["changeSummary"],
                 "kind": kind,
                 "note": note,
@@ -142,7 +150,7 @@ def _carry_item(
     *,
     tense: str,
 ) -> Dict[str, Any]:
-    currency = emp.get("currency") or "£"
+    currency = emp.get("currency") or ""
     kind = row.get("kind") or "arrears"
     paid = row.get("octoberPaid")
     if paid is None:
@@ -153,18 +161,18 @@ def _carry_item(
     article = "an" if kind_label == "arrear" else "a"
     if tense == "settled":
         note = (
-            f"Previous pay {previous} was deposited. "
-            f"{difference} is in this cycle as {article} {kind_label}."
+            f"Old base pay {previous} was deposited. "
+            f"The difference {difference} is in this cycle as {article} {kind_label}."
         )
     elif tense == "closed":
         note = (
-            f"Not approved in time. Previous pay {previous} is deposited. "
-            f"{difference} carries to {next_cycle} as {article} {kind_label}."
+            f"Not approved in time. Old base pay {previous} is deposited. "
+            f"The difference {difference} is taken as {article} {kind_label} in {next_cycle}."
         )
     else:
         note = (
-            f"If not approved in time, previous pay {previous} is deposited. "
-            f"{difference} carries to {next_cycle} as {article} {kind_label}."
+            f"If not approved in time, old base pay {previous} will be deposited. "
+            f"The difference {difference} is taken as {article} {kind_label} in {next_cycle}."
         )
     return {
         "employeeId": emp["id"],
@@ -186,7 +194,7 @@ def _live_carry_row(
     pay_month: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Difference between last approved pay and this cycle, from the employee record."""
-    month = pay_month or (_month_name(cycle_dates(as_of).get("label") or "") or "October")
+    month = pay_month or _month_name(cycle_dates(as_of).get("label") or "")
     struct = rules_svc.salary_structure(store, emp, as_of, cycle=month)
     payable = (
         float(emp.get("base_salary") or 0)
@@ -210,10 +218,10 @@ def _annotate_unapproved_carry(
     tense: str,
     as_of: str,
 ) -> List[Dict[str, Any]]:
-    """Unapproved lines: previous pay is deposited; the gap is next cycle's arrear or deductible."""
+    """Unapproved lines: old base pay is deposited; the gap is next cycle's arrear or deductible."""
     items: List[Dict[str, Any]] = []
     for line in lines:
-        if line.get("approved") or (line.get("origin") or "") == "october_carry":
+        if line.get("approved") or line.get("rejected") or (line.get("origin") or "") == "october_carry":
             continue
         eid = line.get("employeeId") or ""
         emp = store.get_employee(eid) if eid else None
@@ -228,7 +236,7 @@ def _annotate_unapproved_carry(
     return items
 
 
-def _settled_carry_items(store: Store, cycle_id: str, as_of: str) -> List[Dict[str, Any]]:
+def _settled_carry_items(store: Store, cycle_id: str, as_of: str, pay_month: str) -> List[Dict[str, Any]]:
     items: List[Dict[str, Any]] = []
     for line in store.review_lines(cycle_id):
         if (line.get("origin") or "") != "october_carry":
@@ -236,7 +244,7 @@ def _settled_carry_items(store: Store, cycle_id: str, as_of: str) -> List[Dict[s
         emp = store.get_employee(line.get("employee_id") or "")
         if not emp:
             continue
-        row = _live_carry_row(store, emp, as_of, pay_month="October")
+        row = _live_carry_row(store, emp, as_of, pay_month=pay_month)
         if not row:
             continue
         items.append(_carry_item(emp, row, "this cycle", tense="settled"))
@@ -251,14 +259,15 @@ def _carry_block(
     november_view: bool,
     window: str,
     next_month: str,
+    source_month: str,
     as_of: str,
 ) -> Optional[Dict[str, Any]]:
     if november_view:
-        items = _settled_carry_items(store, cycle["id"], as_of)
+        items = _settled_carry_items(store, cycle["id"], as_of, source_month)
         if items:
             return {
                 "headline": (
-                    "October was not approved in time, so the previous pay was deposited. "
+                    f"{source_month} was not approved in time, so the old base pay was deposited. "
                     "These differences are in this cycle as an arrear or a deductible."
                 ),
                 "nextCycle": next_month,
@@ -276,7 +285,7 @@ def _carry_block(
         ):
             return {
                 "headline": (
-                    "October changes were approved in time, so the new amounts were paid. "
+                    f"{source_month} changes were approved in time, so the new amounts were paid. "
                     "No arrears or deductibles carried into this cycle."
                 ),
                 "nextCycle": next_month,
@@ -292,8 +301,8 @@ def _carry_block(
         if lines and all(line.get("approved") for line in lines):
             return {
                 "headline": (
-                    f"If a line is not manually approved in time, the previous pay is deposited. "
-                    f"The difference carries to {next_month} as an arrear or a deductible. "
+                    f"If a line is not manually approved in time, the old base pay is deposited. "
+                    f"The difference is taken as an arrear or a deductible in {next_month}. "
                     f"Every line is approved, so nothing carries."
                 ),
                 "nextCycle": next_month,
@@ -303,13 +312,13 @@ def _carry_block(
         return None
     if tense == "open":
         headline = (
-            f"If a line is not manually approved in time, the previous pay is deposited. "
-            f"The difference carries to {next_month} as an arrear or a deductible."
+            f"If a line is not manually approved in time, the old base pay is deposited. "
+            f"The difference is taken as an arrear or a deductible in {next_month}."
         )
     else:
         headline = (
-            f"This review was not approved in time. The previous pay is deposited. "
-            f"The difference carries to {next_month} as an arrear or a deductible."
+            f"This review was not approved in time. The old base pay is deposited. "
+            f"The difference is taken as an arrear or a deductible in {next_month}."
         )
     return {
         "headline": headline,
@@ -344,7 +353,8 @@ def _line_has_october_difference(store: Store, line: Dict[str, Any], as_of: str)
     emp = store.get_employee(line.get("employee_id") or "")
     if not emp:
         return False
-    return _live_carry_row(store, emp, as_of, pay_month="October") is not None
+    source_month = _month_name(previous_cycle_dates(as_of).get("label") or "")
+    return _live_carry_row(store, emp, as_of, pay_month=source_month) is not None
 
 
 def _carry_line_id(kind: str, employee_id: str) -> str:
@@ -354,13 +364,13 @@ def _carry_line_id(kind: str, employee_id: str) -> str:
 def _november_visible_rows(raw_lines: List[Dict[str, Any]], as_of: str) -> List[Dict[str, Any]]:
     """Lines that belong to the cycle being reviewed, not the month before or after."""
     cd = cycle_dates(as_of)
-    start = str(cd.get("open") or "2026-11-01")
-    end = str(next_cycle_dates(as_of).get("open") or "9999-12-31")
+    start = str(cd["open"])
+    end = str(next_cycle_dates(as_of)["open"])
     visible = []
     for row in raw_lines:
         origin = row.get("origin") or ""
         created = row.get("created_on") or ""
-        if origin not in ("edited", "november", "october_carry", "exit") and created < "2026-11-01":
+        if origin not in ("edited", "november", "october_carry", "exit") and created < start:
             continue
         if created and not (start <= created < end):
             continue
@@ -429,7 +439,7 @@ def _line_summary_counts(lines: List[Dict[str, Any]], rollup: Dict[str, int]) ->
 
 def _cleanup_november_review_lines(store: Store, cycle: Dict[str, Any], as_of: str) -> None:
     cut = parse_date(cycle_dates(as_of)["inputFinalisation"])
-    nxt_open = str(next_cycle_dates(as_of).get("open") or "2026-12-01")
+    nxt_open = str(next_cycle_dates(as_of)["open"])
     for r in store.review_lines(cycle["id"], as_of=as_of):
         lid = r["id"]
         if lid.startswith("rev_nov_emp_"):
@@ -440,7 +450,8 @@ def _cleanup_november_review_lines(store: Store, cycle: Dict[str, Any], as_of: s
         created = r.get("created_on")
         summary = r.get("change_summary") or ""
         emp = store.get_employee(eid) if eid else None
-        live = _live_carry_row(store, emp, as_of, pay_month="October") if emp else None
+        source_month = _month_name(previous_cycle_dates(as_of).get("label") or "")
+        live = _live_carry_row(store, emp, as_of, pay_month=source_month) if emp else None
         # Drop a later bonus line that repeats the October arrears amount.
         if live and live.get("kind") == "arrears" and origin in ("edited", "november"):
             try:
@@ -453,6 +464,20 @@ def _cleanup_november_review_lines(store: Store, cycle: Dict[str, Any], as_of: s
                 pass
         if created and origin in ("edited", "november") and parse_date(created) > cut:
             store.update_review_line(lid, created_on=nxt_open, origin="november")
+
+
+def _october_change_rejected(store: Store, cycle_id: str, employee_id: str, as_of: str) -> bool:
+    """Rejected lines stay on old base pay and do not carry as an incorrect payment."""
+    for row in store.review_lines(cycle_id):
+        if row.get("employee_id") != employee_id:
+            continue
+        origin = row.get("origin") or ""
+        if origin == "october_carry" or str(row["id"]).startswith("rev_nov_"):
+            continue
+        decision = store.line_decision(row["id"], as_of)
+        if decision and (decision.get("decision") or "approved") == "rejected":
+            return True
+    return False
 
 
 def _october_change_approved(store: Store, cycle_id: str, employee_id: str, as_of: str) -> bool:
@@ -470,15 +495,18 @@ def _october_change_approved(store: Store, cycle_id: str, employee_id: str, as_o
 
 def _persist_november_carry_lines(store: Store, cycle: Dict[str, Any], as_of: str) -> None:
     """Next cycle opens with last cycle's unapproved gaps: arrears or deductibles."""
-    created_on = "2026-11-01"
+    source = previous_cycle_dates(as_of)
+    source_month = _month_name(source.get("label") or "")
+    created_on = str(cycle_dates(as_of).get("open") or "")
     signed_off = bool(cycle.get("approved"))
     kept = set()
     for line in _october_source_lines(store, cycle["id"]):
         eid = line.get("employee_id") or ""
         emp = store.get_employee(eid) if eid else None
-        live = _live_carry_row(store, emp, as_of, pay_month="October") if emp else None
+        live = _live_carry_row(store, emp, as_of, pay_month=source_month) if emp else None
         approved = signed_off or _october_change_approved(store, cycle["id"], eid, as_of)
-        if not emp or not live or approved:
+        rejected = _october_change_rejected(store, cycle["id"], eid, as_of)
+        if not emp or not live or approved or rejected:
             for kind in ("arrears", "recovery"):
                 stale = _carry_line_id(kind, eid)
                 if store.get_review_line(stale):
@@ -489,7 +517,7 @@ def _persist_november_carry_lines(store: Store, cycle: Dict[str, Any], as_of: st
         other_id = _carry_line_id(other, eid)
         if store.get_review_line(other_id):
             store.delete_review_line(other_id)
-        currency = emp.get("currency") or "£"
+        currency = emp.get("currency") or ""
         amt = rules_svc.fmt_money(currency, live["amount"])
         label = "Arrears" if kind == "arrears" else "Deductible"
         sign = "+" if kind == "arrears" else "–"
@@ -497,11 +525,11 @@ def _persist_november_carry_lines(store: Store, cycle: Dict[str, Any], as_of: st
             {
                 "id": _carry_line_id(kind, eid),
                 "cycle_id": cycle["id"],
-                "employee_id": eid,
                 "employee_name": emp["name"],
+                "employee_id": eid,
                 "country": emp["country"],
                 "change_summary": f"{label} {sign}{amt}",
-                "why_flagged": "From October review (not signed off)",
+                "why_flagged": f"From {source_month} review (not signed off)",
                 "matching_source": label,
                 "origin": "october_carry",
                 "created_on": created_on,
@@ -674,6 +702,12 @@ def get_review(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
     counts = calendar_svc.cycle_counts(store, customer_id, as_of)
     november_view = not october_closed_view and active_cycle_key(as_of) == "november"
     next_month = _month_name(next_c.get("label") or "")
+    this_month = _month_name(cd.get("label") or "")
+    source_month = (
+        _month_name(previous_cycle_dates(as_of).get("label") or "")
+        if november_view
+        else this_month
+    )
     # Differences from an unsigned October review land as soon as November opens, including before Nov 17.
     if november_view:
         _sync_november_review(store, cycle, as_of)
@@ -729,6 +763,7 @@ def get_review(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
                 november_view=november_view,
                 window=window,
                 next_month=next_month,
+                source_month=source_month,
                 as_of=as_of,
             ),
         }
@@ -750,6 +785,7 @@ def get_review(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
         november_view=november_view,
         window=window,
         next_month=next_month,
+        source_month=source_month,
         as_of=as_of,
     )
 
@@ -758,7 +794,7 @@ def get_review(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
         if november_view
         else _review_headline_counts(store, customer_id, as_of, lines, counts)
     )
-    remaining = sum(1 for l in lines if not l["approved"])
+    remaining = sum(1 for l in lines if not l["approved"] and not l.get("rejected"))
     badge = remaining if window == "open" and not active else 0
 
     if window == "closed":
@@ -777,7 +813,7 @@ def get_review(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
             n = len(unapplied)
             summary = (
                 f"Payroll not approved · {n} changes not applied · "
-                f"{arrears_n} arrears, {recovery_n} recoveries moved to November"
+                f"{arrears_n} arrears, {recovery_n} recoveries moved to {next_month}"
             )
             tone = "danger"
             header = (
@@ -804,7 +840,7 @@ def get_review(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
             "changedLines": line_counts["changedLines"],
             "matchedLines": line_counts["matchedLines"],
             "needsHumanCheck": line_counts["needsHumanCheck"],
-            "numbersLabel": "Final October numbers" if october_closed_view or cd["key"] == "october" else "Final numbers",
+            "numbersLabel": f"Final {this_month} numbers",
             "lines": lines,
             "remaining": remaining,
             "canSignOff": False,
@@ -846,7 +882,7 @@ def get_review(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
         "canSignOff": remaining == 0 and not active,
         "signOffHint": None
         if remaining == 0
-        else f"Approve {remaining} remaining line{'s' if remaining != 1 else ''} to approve payroll",
+        else f"Approve or reject {remaining} remaining line{'s' if remaining != 1 else ''} to approve payroll",
         "signedOff": active,
         "signoff": (
             {
@@ -878,12 +914,30 @@ def approve_line(store: Store, customer_id: str, line_id: str, as_of: str, actor
     return get_review(store, customer_id, as_of)
 
 
+def reject_line(store: Store, customer_id: str, line_id: str, as_of: str, actor: str = "HR admin") -> Dict[str, Any]:
+    """Send the change back to old base pay. It is not a missed or incorrect payment."""
+    _assert_window_open(as_of)
+    cycle = store.get_current_cycle(customer_id)
+    if cycle:
+        _sync_november_review(store, cycle, as_of)
+    line = store.get_review_line(line_id)
+    if not line:
+        raise LookupError(f"Review line not found: {line_id}")
+    current = store.line_decision(line_id, as_of)
+    if current and (current.get("decision") or "approved") == "rejected":
+        return get_review(store, customer_id, as_of)
+    if current:
+        store.revoke_line_approval(line_id, revoked_on=as_of, reason=f"Rejected by {actor}")
+    store.reject_line(line_id, rejected_on=as_of, rejected_by=actor)
+    return get_review(store, customer_id, as_of)
+
+
 def unapprove_line(store: Store, customer_id: str, line_id: str, as_of: str, actor: str = "HR admin") -> Dict[str, Any]:
     _assert_window_open(as_of)
     line = store.get_review_line(line_id)
     if not line:
         raise LookupError(f"Review line not found: {line_id}")
-    if not store.line_approval(line_id, as_of):
+    if not store.line_decision(line_id, as_of):
         return get_review(store, customer_id, as_of)
     store.revoke_line_approval(line_id, revoked_on=as_of, reason=f"Undo by {actor}")
     emp = store.get_employee(line.get("employee_id") or "")
@@ -1075,7 +1129,10 @@ def patch_employee(
         one_time_payments=rules_svc.one_time_payments(store, employee_id, as_of),
         tax_rate=rules_svc.tax_rate(emp["country"]),
     )
-    check = None if confirm_ai else rules_svc.ai_check_payload(emp, salary.gross)
+    base_changed = abs(new_base - float(emp["base_salary"] or 0)) > 0.01
+    check = None
+    if base_changed and not confirm_ai:
+        check = rules_svc.ai_check_payload(emp, new_base)
     if check:
         raise AiCheckRequired(check)
 

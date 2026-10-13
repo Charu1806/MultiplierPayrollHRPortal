@@ -10,6 +10,7 @@ import type {
   CycleCurrentResponse,
   DocumentFixturesResponse,
   EmployeeDto,
+  FundingConfirm,
   EmployeesListResponse,
   ExtractResult,
   IssuesListResponse,
@@ -337,6 +338,13 @@ export const clarityApi = {
       },
     ),
 
+  rejectLine: (lineId: string, asOf: string) =>
+    clarityFetch<ReviewResponse>(`/review/${lineId}/reject`, {
+      method: 'POST',
+      body: { asOf },
+      asOf,
+    }),
+
   unapproveLine: (lineId: string, asOf: string) =>
     clarityFetch<ReviewResponse>(`/review/${lineId}/unapprove`, {
       method: 'POST',
@@ -356,6 +364,13 @@ export const clarityApi = {
       method: 'POST',
       body: { asOf },
       asOf,
+    }),
+
+  confirmFunding: (asOf: string, decision: 'yes' | 'no', cycleKey: string) =>
+    clarityFetch<FundingConfirm>('/funding/decision', {
+      method: 'POST',
+      asOf,
+      body: { decision, cycleKey },
     }),
 
   getNotifications: (asOf: string, channel = 'email') =>

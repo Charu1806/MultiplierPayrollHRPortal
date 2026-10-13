@@ -195,6 +195,19 @@ describe('useAppStore cache', () => {
     expect(api.getEmployees).toHaveBeenLastCalledWith('2026-10-12')
   })
 
+  it('drops the selected issue once it is no longer open', async () => {
+    api.getIssue.mockResolvedValue(issue('issue_001'))
+    await useAppStore.getState().loadIssue('issue_001')
+    api.getIssues.mockResolvedValue({ issues: [], asOf: '2026-10-12' })
+
+    await useAppStore.getState().refreshIssues()
+
+    const s = useAppStore.getState()
+    expect(s.issues).toEqual([])
+    expect(s.selectedIssue).toBeNull()
+    expect(s.selectedIssueId).toBeNull()
+  })
+
   it('resolveIssue surfaces API errors as a toast and rethrows', async () => {
     api.resolveIssue.mockRejectedValue(
       new ClarityApiError('Not built in prototype', 501, {}),

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 
 test.describe('HR tool and payroll navigation', () => {
-  test('notifications sit last under People and payroll employees sit below review', async ({ page }) => {
+  test('people, payroll, and notifications are separate groups', async ({ page }) => {
     await page.goto('/people')
 
     const people = page.getByTestId('nav-people')
@@ -10,7 +10,7 @@ test.describe('HR tool and payroll navigation', () => {
     const labels = (await people.locator('a, button').allTextContents()).map((text) => text.trim())
     expect(labels[0]).toBe('Employees')
     expect(labels.slice(1, 4)).toEqual(['Time off', 'Insurance', 'Expenses'])
-    expect(labels.at(-1)).toMatch(/^Notifications/)
+    expect(labels.some((label) => label.startsWith('Notifications'))).toBe(false)
     await expect(people.getByRole('button', { name: 'Time off' })).toBeDisabled()
     await expect(people.getByRole('button', { name: 'Insurance' })).toBeDisabled()
     await expect(people.getByRole('button', { name: 'Expenses' })).toBeDisabled()
@@ -22,6 +22,11 @@ test.describe('HR tool and payroll navigation', () => {
     expect(reviewAt).toBeGreaterThanOrEqual(0)
     expect(employeesAt).toBeGreaterThan(reviewAt)
     expect(payrollLabels.at(-1)).toBe('Employees')
+
+    const notes = page.getByTestId('nav-notifications')
+    await expect(notes).toContainText('Notifications')
+    await expect(notes).toContainText('Powered by Multiplier')
+    await expect(notes.getByRole('link', { name: /Notifications/ })).toBeVisible()
   })
 
   test('HR employees page has no payroll columns or Multiplier header', async ({ page }) => {
@@ -39,10 +44,11 @@ test.describe('HR tool and payroll navigation', () => {
     await expect(page.getByRole('columnheader', { name: 'Employee adds' })).toBeVisible()
   })
 
-  test('notifications open inside the HR header', async ({ page }) => {
+  test('notifications open in their own header', async ({ page }) => {
     await page.goto('/people/notifications')
     await expect(page).toHaveURL(/\/people\/notifications/)
-    await expect(page.locator('header').getByText('People')).toBeVisible({ timeout: 20000 })
+    await expect(page.locator('header').getByText('Notifications')).toBeVisible({ timeout: 20000 })
+    await expect(page.locator('header').getByText('People')).toHaveCount(0)
     await expect(page.locator('header').getByText('Powered by Multiplier')).toHaveCount(0)
     await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText('Notifications')
     await expect(page.getByRole('button', { name: '← Back' })).toBeVisible()
@@ -50,6 +56,9 @@ test.describe('HR tool and payroll navigation', () => {
     await expect(alerts).toBeVisible()
     await expect(alerts).toContainText('V3')
     await expect(page.getByRole('button', { name: /Slack/ })).toContainText('V2')
+    const voice = page.getByRole('button', { name: /AI Voice call/ })
+    await expect(voice).toBeVisible()
+    await expect(voice).toContainText('V2')
   })
 
   test('overview stage dates come from the cycle', async ({ page }) => {
@@ -58,14 +67,18 @@ test.describe('HR tool and payroll navigation', () => {
     await expect(page.getByText('Review window', { exact: true })).toBeVisible()
     await expect(page.getByText('Oct 16–19').first()).toBeVisible()
     await expect(page.getByText('Final report', { exact: true })).toBeVisible()
-    await expect(page.getByText('Review closed', { exact: true })).toBeVisible()
-    await expect(page.getByText('Oct 24–27').first()).toBeVisible()
+    await expect(page.getByText('Review close', { exact: true })).toBeVisible()
+    await expect(page.getByText('Deadline imposed by Multiplier.')).toBeVisible()
+    await expect(page.getByText('Your setting').first()).toBeVisible()
+    await expect(page.getByText('Oct 23–27').first()).toBeVisible()
+    await expect(page.getByText('Oct 28').first()).toBeVisible()
+    await expect(page.getByText('From pay day', { exact: true })).toHaveCount(2)
     await expect(page.getByText(/Add funds · /)).toBeVisible()
     const summary = page.getByTestId('sync-summary')
     await expect(summary).toContainText('Add employees, bonuses, hikes, and missing details by Oct 15')
     await expect(summary).toContainText('Complete review by Oct 19')
     await expect(summary).toContainText('Final closure Oct 22')
-    await expect(summary).toContainText('Payroll submitted')
+    await expect(summary).toContainText('Payroll submitted Oct 28')
     await expect(summary).toContainText('Pay day')
     await expect(summary).not.toContainText('Last sync')
     await expect(summary).not.toContainText(/\d+ bonus/)

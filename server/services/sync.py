@@ -121,7 +121,6 @@ def _present_run(
 
 def status(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
     latest = store.latest_successful_sync(customer_id, as_of)
-    limit = int((cycle_config().get("sync") or {}).get("maxPerDay") or 1)
     used = store.manual_syncs_on(customer_id, as_of[:10])
     last = _present_run(store, customer_id, as_of, latest) if latest else None
     if last:
@@ -129,8 +128,8 @@ def status(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
     return {
         "lastSync": last,
         "manualUsedToday": used,
-        "manualRemaining": max(0, limit - used),
-        "maxPerDay": limit,
+        "manualRemaining": 1,
+        "maxPerDay": None,
     }
 
 
@@ -152,11 +151,6 @@ def run_sync(
             result = _present_run(store, customer_id, as_of, existing)
             result["idempotent"] = True
             return result
-    else:
-        limit = int((cycle_config().get("sync") or {}).get("maxPerDay") or 1)
-        if store.manual_syncs_on(customer_id, as_of[:10]) >= limit:
-            raise SyncLimitError("Manual sync already used today")
-
     clock_svc.set_as_of(as_of)
     pending = _diff(store, customer_id)
     stamped = clock_svc.stamp(as_of)
@@ -560,9 +554,19 @@ def payday_outcomes(store: Store, customer_id: str, as_of: str) -> Optional[Dict
             bump(emp.get("country") or "", "missing")
             continue
         line = store.current_review_line(cycle["id"], emp["id"]) if cycle else None
-        if line and not store.line_approval(line["id"], as_of):
+        decision = store.line_decision(line["id"], as_of) if line else None
+        if decision and (decision.get("decision") or "approved") == "rejected":
+            paid.append(emp["id"])
+            bump(emp.get("country") or "", "paid")
+            continue
+        if line and not decision:
             previous.append(
-                {"id": emp["id"], "name": emp["name"], "reason": "Approval missing", "country": emp.get("country")}
+                {
+                    "id": emp["id"],
+                    "name": emp["name"],
+                    "reason": "Change not approved, so old base pay is used",
+                    "country": emp.get("country"),
+                }
             )
             bump(emp.get("country") or "", "previous")
             continue

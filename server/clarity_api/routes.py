@@ -17,6 +17,7 @@ from server.db.connection import connect, get_db_path
 from server.db.repositories import Store
 from server.gateway.middleware import customer_id
 from server.services import calendar as calendar_svc
+from server.services import funding as funding_svc
 from server.services import clock as clock_svc
 from server.services import connector as connector_svc
 from server.services import extraction as extraction_svc
@@ -485,6 +486,17 @@ def review_approve(line_id: Optional[str] = None):
         return _problem(404, "Not Found", "Review line not found — it may not belong to this cycle")
 
 
+@bp.post("/review/<line_id>/reject")
+def review_reject(line_id: str):
+    as_of = _as_of()
+    try:
+        return jsonify(review_svc.reject_line(_store(), customer_id(), line_id, as_of))
+    except LookupError:
+        return _problem(404, "Not Found", "Review line not found")
+    except PermissionError as e:
+        return _problem(409, "Conflict", str(e))
+
+
 @bp.post("/review/<line_id>/unapprove")
 def review_unapprove(line_id: str):
     body = request.get_json(force=True, silent=True) or {}
@@ -523,6 +535,20 @@ def review_reopen(employee_id: Optional[str] = None):
         return _problem(404, "Not Found", "Employee not found")
     except ValueError as e:
         return _problem(400, "Bad Request", str(e))
+
+
+@bp.post("/funding/decision")
+def funding_decision():
+    body = request.get_json(silent=True) or {}
+    decision = str(body.get("decision") or "").strip().lower()
+    cycle_key = body.get("cycleKey") or body.get("cycle_key")
+    try:
+        view = funding_svc.record_funding_decision(
+            _store(), customer_id(), _as_of(), decision, str(cycle_key) if cycle_key else None
+        )
+    except ValueError as e:
+        return _problem(400, "Bad Request", str(e))
+    return jsonify(view)
 
 
 @bp.get("/notifications")

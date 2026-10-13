@@ -32,13 +32,13 @@ The prototype bar switches persona (Global HR admin Maya Rao, or a country HR ad
 
 Use **Prototype date** in the top bar. Outcomes are computed from what you fixed.
 
-Sign in as Maya Rao (Global) unless a step names a country admin. The overview deadline card on Oct 12 cites Oct 15, Oct 19, Oct 22, payroll submitted Oct 27, and pay day Oct 29.
+Sign in as Maya Rao (Global) unless a step names a country admin. The overview deadline card on Oct 12 cites Oct 15, Oct 19, Oct 22, payroll submitted Oct 28, and pay day Oct 29.
 
 | Date | Where | What you should see |
 |---|---|---|
 | Oct 12 | Overview | Deadline card for October. “N will miss payment” scrolls to Countries. Stage tracker runs through Pay day |
 | Oct 12 | Review & approve | 38 changed · 32 matched · 6 need check, for Global. A country admin sees only that country |
-| Oct 12 | Action needed | **Remind Lena** saves an email in Notifications. **Add details** opens the missing-details form. Filling the last field shows “Thanks for adding your details. Payment is on track.” and does not send a confirmation email |
+| Oct 12 | Action needed | **Remind Lena** saves an email in Notifications. **Add details** opens the missing-details form. Filling the last field shows “Thanks for adding your details. Payment is on track.” and emails the employee that the month’s payroll is on track |
 | Oct 13 | Employees → Add | Priya + offer letter → missing PAN, bank, and manager |
 | Oct 13 | James salary | Open salary structure or attach `bonus_letter_james.pdf` → base £4,000 + bonus £8,000 |
 | Oct 30–31 | Overview | Yellow highlight for the October payroll that just paid, including a payment return on the 30th |

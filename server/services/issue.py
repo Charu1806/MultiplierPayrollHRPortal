@@ -465,7 +465,7 @@ def overview(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
 
     review_lines = store.review_lines(cycle["id"], as_of=as_of)
     need_check = len(review_lines)
-    remaining = sum(1 for r in review_lines if not store.line_approval(r["id"], as_of))
+    remaining = sum(1 for r in review_lines if not store.line_decision(r["id"], as_of))
     signed = bool(cycle.get("approved"))
     window = review_window_state(as_of)
     closed_without = window == "closed" and not signed
@@ -502,6 +502,14 @@ def overview(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
                 + (f" incl. {from_oct_lines} from October" if from_oct_lines else " need your check")
             ),
             "href": "/payroll/review",
+            "viewOnly": False,
+        },
+        {
+            "kind": "milestone",
+            "title": "Final report",
+            "deadline": parse_date(cd["payDate"]).replace(day=20).isoformat(),
+            "detail": "Shared with Global and each country HR admin",
+            "href": "/payroll/overview",
             "viewOnly": False,
         },
     ]
@@ -569,6 +577,7 @@ def overview(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
         unapplied_n=unapplied_n,
     )
 
+    from server.services import funding as funding_svc
     from server.services.sync import payroll_close_highlight, previous_payrolls
 
     october_summary = payroll_close_highlight(store, customer_id, as_of)
@@ -593,6 +602,7 @@ def overview(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
         "changesReminder": changes_reminder(as_of),
         "outcome": None if in_november else rules_svc.outcome(store, customer_id, as_of),
         "funding": funding,
+        "fundsAddedOn": funding_svc.funds_added_on(store, customer_id, cd["key"], as_of),
         "submitted": submitted,
         "octoberSummary": october_summary,
         "previousPayrolls": earlier_payrolls,
@@ -722,24 +732,36 @@ def remind(
     form_url = f"{email_smtp.app_base_url()}{form_path}"
     to_addr = email_smtp.demo_personal_email(emp["name"], emp.get("personal_email"))
 
-    from domain.calendar_rules import NOV_CUTOFF, cycle_dates
+    from domain.calendar_rules import cycle_dates
 
     cd = cycle_dates(as_of)
-    cutoff_label = short_date(cd["inputFinalisation"] or NOV_CUTOFF)
-    carried = parse_date(as_of) > CUTOFF and row.get("kind") != "payment_returned"
-    subject = f"Add your {label} for payroll"
+    deadline_on = parse_date(cd["payDate"]).replace(day=15)
+    cutoff_label = short_date(deadline_on)
+    month = str(cd.get("label") or "This").split()[0]
+    field_reason = {
+        "Tax ID": "needed to calculate German income tax",
+        "CPF": "needed for Brazil payroll",
+        "PAN": "needed for India tax",
+        "Bank account": "needed to pay you",
+    }
+    what_we_need = "; ".join(field_reason.get(f, "needed for payroll") for f in owned)
     if row.get("kind") == "payment_returned":
         subject = "Update your bank details – October payment was returned"
-    elif carried:
-        subject = f"Add your {label} for payroll – missed October pay"
-
-    field_reason = {
-        "Tax ID": "Tax ID (Steuer-ID) · needed to calculate your German income tax",
-        "CPF": "CPF · needed for Brazil payroll",
-        "PAN": "PAN · needed for India tax",
-        "Bank account": "Bank account · needed to pay you",
-    }
-    what_we_need = "; ".join(field_reason.get(f, f"{f} · needed for payroll") for f in owned)
+        body = (
+            f"Hi {first},\n\n"
+            f"What: your bank details.\n"
+            f"By when: {cutoff_label}.\n"
+            f"Why: the October payment was returned.\n"
+            f"How: use Add my details below. It takes about a minute. You don't need to reply to this email."
+        )
+    else:
+        subject, body = email_smtp.employee_details_mail(
+            first=first,
+            label=label,
+            deadline=cutoff_label,
+            month=month,
+            detail=what_we_need,
+        )
 
     smtp_result: Dict[str, Any] = {"sent": False, "error": "smtp_not_configured"}
     if email_smtp.smtp_configured():
@@ -749,17 +771,11 @@ def remind(
             fields_label=label,
             form_url=form_url,
             cutoff_label=cutoff_label,
+            month=month,
+            detail=what_we_need,
         )
 
     store.update_issue(issue_id, reminder_sent_on=as_of, reminder_sent_at=clock)
-
-    # Email body = what the employee would receive (no raw URL, no SMTP status)
-    body = (
-        f"Hi {first}, we need your {label} to pay you on time. Please add it by **{cutoff_label}**. "
-        f"It takes about a minute: [add your details here].\n\n"
-        f"What we need\n{what_we_need}\n\n"
-        f"Your details go straight to payroll; you don't need to reply to this email."
-    )
     ui_message = _reminder_label(as_of, clock, first)
     # Without SMTP, the reminder still goes out as the in-app email.
     # A configured server that fails to send stays undelivered.
@@ -776,7 +792,7 @@ def remind(
         recipient_employee_id=emp["id"],
         subject=subject,
         body_summary=body,
-        actions=[{"action_text": f"Add {label}", "deadline": cd["inputFinalisation"], "issue_id": issue_id}],
+        actions=[{"action_text": f"Add {label}", "deadline": deadline_on.isoformat(), "issue_id": issue_id}],
         cta_label="Add my details",
         # HR Notifications CTA opens employee profile with Missing details expanded.
         # The SMTP email still uses form_url so the employee can fill the form.
