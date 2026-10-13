@@ -6,7 +6,7 @@ import { ConfirmModal, NoticeModal, ToastStack } from '@/components'
 import { DatePicker } from '@/components/DatePicker'
 import { MultiplierLogo } from '@/components/MultiplierLogo'
 import { formatJourneyAt } from '@/features/payroll/lib/labels'
-import { countryAdmins, notificationVisible, personaCountry } from '@/features/persona'
+import { countryAdmins, notificationVisible, personaCountry, seesAllCountries } from '@/features/persona'
 import { useAppStore, type PrototypeDate } from '@/store'
 
 const peopleNav = [{ to: '/people', label: 'Employees', badgeKey: null }] as const
@@ -21,7 +21,7 @@ const payrollNav = [
 ] as const
 
 const stubNav = [
-  { label: 'AI assistant', tag: 'V2', note: 'Planned for V2' },
+  { label: 'AI Chat Assistance', tag: 'V2', note: 'AI Chat Assistance is coming in V2' },
   { label: 'Finance view', tag: 'V3', note: 'Planned for V3' },
   { label: 'Employee payroll tool', tag: 'V3', note: 'Planned for V3' },
 ]
@@ -146,11 +146,7 @@ export function Shell() {
   const setPersona = useAppStore((s) => s.setPersona)
   const admins = countryAdmins(company)
   const selectedAdmin =
-    persona === 'finance'
-      ? co.financeAdmin || { name: 'Noah Grant', role: 'Fund manager', initials: 'NG' }
-      : persona === 'global'
-        ? co.admin
-        : admins.find((row) => row.code === persona) || co.admin
+    persona === 'global' ? co.admin : admins.find((row) => row.code === persona) || co.admin
   const syncCaption = `${co.syncCaption} · ${co.syncAgoMinutes} min ago`
 
   return (
@@ -180,13 +176,21 @@ export function Shell() {
               aria-label="Signed-in HR admin"
               className="h-7 max-w-[240px] rounded border border-border bg-surface px-2 text-xs text-text-primary"
               value={persona}
-              onChange={(event) => setPersona(event.target.value as typeof persona)}
+              onChange={(event) => {
+                const next = event.target.value as typeof persona
+                setPersona(next)
+                // A country admin's Action needed / Review filter is written into the URL.
+                // Switching back to Global must show every country again.
+                if (!seesAllCountries(next)) return
+                const params = new URLSearchParams(location.search)
+                if (!params.has('country')) return
+                params.delete('country')
+                const search = params.toString()
+                navigate({ pathname: location.pathname, search: search ? `?${search}` : '' }, { replace: true })
+              }}
             >
               <option value="global">
                 {co.admin.name} · Global HR admin
-              </option>
-              <option value="finance">
-                {(co.financeAdmin || { name: 'Noah Grant' }).name} · Fund manager
               </option>
               {admins.map((row) => (
                 <option key={row.code} value={row.code}>

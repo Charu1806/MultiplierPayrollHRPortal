@@ -44,8 +44,34 @@ type Props = {
   unappliedCount?: number
   dates: CycleDates
   willMiss?: number
+  /** Review lines HR has neither accepted nor rejected. They are paid at the old base. */
+  noAction?: number
   financeName?: string
   fundsAddedOn?: string | null
+}
+
+function peopleWord(count: number) {
+  return count === 1 ? 'employee' : 'employees'
+}
+
+function outcomeLine(asOf: string, payDay: string, willMiss: number, noAction: number) {
+  const paid = asOf >= payDay
+  const parts: string[] = []
+  if (noAction > 0) {
+    parts.push(
+      paid
+        ? `${noAction} ${peopleWord(noAction)} got old base pay because approvals were missing`
+        : `${noAction} ${peopleWord(noAction)} will get old base pay because approvals are missing`,
+    )
+  }
+  if (willMiss > 0) {
+    parts.push(
+      paid
+        ? `${willMiss} ${peopleWord(willMiss)} missed payment`
+        : `${willMiss} ${peopleWord(willMiss)} will miss payment`,
+    )
+  }
+  return parts.join(' · ')
 }
 
 function daysBefore(iso: string, days: number): string {
@@ -66,6 +92,7 @@ function buildStages(
   unappliedCount: number,
   DATES: CycleDates,
   willMiss = 0,
+  noAction = 0,
   financeName = 'Finance',
   fundsAddedOn: string | null = null,
 ): StageBox[] {
@@ -90,8 +117,8 @@ function buildStages(
     (Date.parse(`${payDay}T00:00:00Z`) - Date.parse(`${asOf}T00:00:00Z`)) / 86400000,
   )
   const paidCount = payOutcomes?.paidSuccessfully
-  const miss = willMiss > 0 ? `${willMiss} will miss payment` : 'On track'
-  const missHref = willMiss > 0 ? '/payroll/actions' : undefined
+  const miss = outcomeLine(asOf, payDay, willMiss, noAction) || 'On track'
+  const missHref = willMiss > 0 ? '/payroll/actions' : noAction > 0 ? '/payroll/review' : undefined
   const phase =
     asOf <= inputClose
       ? 'input'
@@ -154,7 +181,12 @@ function buildStages(
       state: stateFor('report'),
       action: 'Check the report',
       owner: 'customer',
-      status: asOf > finalReport ? (willMiss > 0 ? `${willMiss} will miss this window` : 'On track') : `On ${formatIsoDate(finalReport)}`,
+      status:
+        asOf > finalReport
+          ? miss === 'On track'
+            ? 'On track'
+            : miss
+          : `On ${formatIsoDate(finalReport)}`,
       href: asOf === finalReport || (asOf > reviewEnd && asOf <= finalReport) ? '/payroll/overview' : missHref,
     },
     {
@@ -230,6 +262,7 @@ export function StageTracker({
   unappliedCount = 0,
   dates,
   willMiss = 0,
+  noAction = 0,
   financeName,
   fundsAddedOn,
 }: Props) {
@@ -244,6 +277,7 @@ export function StageTracker({
     unappliedCount,
     dates,
     willMiss,
+    noAction,
     financeName,
     fundsAddedOn,
   )
@@ -255,11 +289,16 @@ export function StageTracker({
           Stage tracker
         </p>
         <p className="mt-1 text-xs text-text-secondary">
-          Input close, the review window, the final report, the funding window, and pay day are your settings.
+          Input close, the review window, the final report, the funding window, and pay day are from your settings.
           Multiplier recommends them; you can choose other dates. Review close is a deadline imposed by Multiplier,
-          calculated back from pay day. Payroll submitted is the 28th of the pay month. Funds are
+          back calculated from pay day. Payroll submitted is the 28th of the pay month. Funds are
           added on the day the fund manager clicks Yes.
         </p>
+        {willMiss > 0 || noAction > 0 ? (
+          <p className="mt-2 text-[13px] font-medium text-text-primary">
+            {outcomeLine(asOf, dates.pay, willMiss, noAction)}
+          </p>
+        ) : null}
       </div>
       <div className="grid grid-cols-7 gap-2">
         {stages.map((stage) => {
@@ -274,7 +313,7 @@ export function StageTracker({
               </div>
               <p className="mt-1 tabular text-[11px] font-medium opacity-90">{stage.dateLabel}</p>
               {stage.owner === 'customer' ? (
-                <p className="mt-1 text-[10px] font-medium uppercase tracking-wide opacity-80">Your setting</p>
+                <p className="mt-1 text-[10px] font-medium uppercase tracking-wide opacity-80">From your settings</p>
               ) : null}
               {stage.owner === 'multiplier' ? (
                 <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-[#863bff]">
@@ -282,7 +321,10 @@ export function StageTracker({
                 </p>
               ) : null}
               {stage.owner === 'multiplier' || stage.owner === 'calculated' ? (
-                <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-[#863bff]">From pay day</p>
+                <p className="mt-1 text-[10px] font-medium uppercase tracking-wide text-[#863bff]">Back calculated from pay day</p>
+              ) : null}
+              {stage.state === 'current' && stage.action && stage.action !== stage.status ? (
+                <p className="mt-1 text-[11px] font-semibold leading-snug text-sky-800">{stage.action}</p>
               ) : null}
               <p
                 className={[
@@ -290,7 +332,7 @@ export function StageTracker({
                   stage.state === 'current' ? 'text-[12px] font-semibold text-sky-800' : 'opacity-90',
                 ].join(' ')}
               >
-                {stage.state === 'current' && stage.action ? stage.action : stage.status}
+                {stage.status}
               </p>
               {stage.note ? (
                 <p className="mt-1 text-[11px] leading-snug opacity-90">{stage.note}</p>

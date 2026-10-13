@@ -250,7 +250,7 @@ On the Overview, the deadline card names the open month. Through the 15th it rea
 
 > Add employees, bonuses, hikes, and missing details by **Oct 15**. People added after Oct 15 move to next month. Complete review by **Oct 19**. Final closure **Oct 22**. Payroll submitted **Oct 28** · Pay day **Oct 29**.
 
-In November the same card says Nov 15, Nov 19, Nov 22, Nov 27, and Nov 29. When anyone will miss payment, a short “N will miss payment” line inside the card scrolls to Countries. The names are not listed on Overview.
+In November the same card says Nov 15, Nov 19, Nov 22, Nov 27, and Nov 29. Before pay day, a short “N will miss payment” line inside the card scrolls to Countries. From pay day it reads “N missed payment” and “N got old base payment”. The names are not listed on Overview.
 
 [Add employee] [Record exit] [Add one-time payment] sit with that card. [Add employee] → `/people/add`. [Record exit] and [Add one-time payment] open Payroll employees with a hint to pick an employee.
 
@@ -265,7 +265,7 @@ In November the same card says Nov 15, Nov 19, Nov 22, Nov 27, and Nov 29. When 
 | Beatriz Costa | `emp_beatriz` | Brazil | Software Engineer | R$14,000 | Before cycle. Missing CPF |
 | Thiago Santos | `emp_thiago` | Brazil | Solutions Architect | R$18,500 | On track; vacation pay in review |
 | Ananya Rao | `emp_ananya` | India | Senior Frontend Engineer | ₹1,20,000 | Raise to ₹1,35,000 in review |
-| David Müller | `emp_david` | Germany | Data Engineer | €4,800 | On track until Oct 29: bank returned payment ("Account closed") → Action needed |
+| David Müller | `emp_david` | Germany | Data Engineer | €4,800 | On track |
 | Rajesh Sharma | `emp_rajesh` | India | QA Lead | ₹95,000 | Arrears in review |
 | Chloe Dubois | `emp_chloe` | UK | Product Ops Lead | £3,600 | Maternity leave: statutory pay in review |
 | Mateo Silva | `emp_mateo` | Brazil | Infrastructure Engineer | R$16,000 | On track; 5 days unpaid leave in review |
@@ -324,7 +324,7 @@ Mail is computed for the open month. Subjects start with that month or that coun
 - **Country HR admin:** 3 (schedule), 10, 13, 14, 15, 16, 18, 19, 20, 21, 22, 23 (ask finance, plus who-will-be-paid), 25, 26, pay day, and the 30th. Global is in copy on the late review and funding notes.
 - **Employees with missing details:** 10, 13, 14, 15. The button opens `/people/{id}?panel=missing#missing-details`. Each mail says the month’s payroll will be missed otherwise. When the saved details put payroll on track, the employee gets “Thanks for adding your details. {month} payroll is on track.” The screen still says “Thanks for adding your details. Payment is on track.”
 
-The inbox on `/people/notifications` shows only mail for the signed-in persona. Global sees global mail, the fund manager’s mail, and employee reminders. Noah Grant, the fund manager, sees the funds email and can click Yes or No. A country admin sees that country and its employee reminders. Write mail is an in-app note from Global to a country admin.
+The inbox on `/people/notifications` shows only mail for the signed-in persona. Global sees global mail, the fund manager’s mail, and employee reminders, and can click Yes or No on the funds email. Noah Grant receives that email. There is no fund-manager view in the persona switcher. A country admin sees that country and its employee reminders. Write mail is an in-app note from Global to a country admin.
 
 Older reminder rows with no audience stay in the API and stay out of this inbox.
 
@@ -372,8 +372,7 @@ Missing-data items **never** appear in Review & approve. Review shows: "**N empl
   1. Primary fix (e.g. "Split into base + bonus") — black — confirmation modal with pre-filled split + optional document.
   2. Secondary "{amount} is correct" — white border — required reason (Promotion · Role change · Retention / market correction · Contract correction · Other) + optional document → resolves; Review line becomes matched ("HR confirmation").
   3. Text link "Open salary structure" → employee profile. Remove separate "Correct the amount".
-- David Müller (from Oct 30, the day after October pay): "Payment returned – update bank details". This is a bank return after October pay, not a missed October input, and it is not tagged Carried over. Saving the new bank account resolves the issue and removes it from Action needed. It stays hidden on dates before the return was recorded.
-- From Nov 1: carried-over missing-data items (for example Lena's tax ID) say "Missed October pay. November pay at risk." A bank return does not use that sentence.
+- From Nov 1: carried-over missing-data items (for example Lena's tax ID) say "Missed October pay. November pay at risk."
 
 ### Screen 3 – All employees (`/people`)
 
@@ -421,7 +420,7 @@ Add the document:
 
 ### Screen B – Employee profile (`/people/:id`)
 
-- A pay banner under the header states whether this person, a bonus, and a salary change will be paid, and in which cycle. Missing required fields hold the person. A bank return has its own sentence.
+- A pay banner under the header states whether this person, a bonus, and a salary change will be paid, and in which cycle. Missing required fields hold the person.
 - Editable fields; Payroll panel: Data journey · Salary structure · One-time payments · Pay status · Actions.
 - **Add one-time payment** → `/people/:id/one-time-payment`: Type → attach document → fields **pre-filled from document** (editable) → **Confirm** modal ("Add £8,000 bonus for James Patel to October pay?") → `POST /api/employees/:id/one-time-payments` → toast → salary structure + OTP list update, tax/net recalculate, Review line "One-time payment – needs approval" with document (or "No supporting document"). Timing: ≤ Oct 15 → October; after → November (stated in confirmation).
 - **Record exit** → `/people/:id/exit` with FnF as before + attachment block.
@@ -462,7 +461,6 @@ Standalone page (no HR nav). Signed single-use token expires after the cycle cut
 - **The add-employee window closes on the 15th** of the pay month. On or before that date, a new employee, bonus, or salary change belongs to this cycle. After the 15th it belongs to the next cycle. The engine input deadline and review close stay the 22nd. Exception: a salary change for someone who already has a row on the open review stays on this review and is marked approved.
 - **Unsigned review outcomes (October):** approved + auto-matched paid as calculated; unapproved paid at the previous salary. The gap is computed from current pay, not from a fixed list of names. November gets **arrears** when this cycle is higher, or a **deductible** when it is lower. The seed starts at James +£8,000, Ananya +₹15,000, Rajesh +₹22,000, Thiago +R$6,170, Chloe –£1,450, Mateo –R$2,667.
 - **Signed off October:** all approved changes paid; November review has no arrears/recoveries from October — only November changes + carry-overs whose data was fixed.
-- **David Müller:** bank return from Oct 30 ("Account closed"), the day after October pay. It is absent on earlier dates. It is its own pay outcome, not also counted as missing inputs. Issue "Payment returned – update bank details". Saving the bank account resolves it and it leaves Action needed. The 30th and 31st highlight, and the October row under Previous payrolls from Nov 1, include that return.
 - **Review window on the tracker and in mail** is the 16th–19th of the pay month. The engine review close is the 22nd. From the 1st of a month, screens use that month’s cycle.
 - One owner per issue — derived from employee-owned vs HR-owned fields. Funding → finance.
 - Email CTAs and Remind employee as §6 / employee reminder rules above.
@@ -496,13 +494,13 @@ The screenshots in `stitch_multiplier_payroll_integration_prototype/` are visual
 
 ## 11. Demo script (acceptance checks – round 5)
 
-**Path A (signed off):** Fix all → approve all → sign off → Oct 28 payroll submitted → Oct 29 pay day → Oct 30 David’s payment returned → Nov 1 Action needed has David and October sits under Previous payrolls.
+**Path A (signed off):** Fix all → approve all → sign off → Oct 28 payroll submitted → Oct 29 pay day → Nov 1 October sits under Previous payrolls.
 
-**Path B (not signed off):** Reset → leave Priya unfixed, approve nothing → after the 22nd the closed review carries unapproved amounts → Nov 1 Action needed has Priya and David → fix Priya → the November review shows the carry. Review nav badge shows that country’s count when a country admin is signed in.
+**Path B (not signed off):** Reset → leave Priya unfixed, approve nothing → after the 22nd the closed review carries unapproved amounts → Nov 1 Action needed has Priya → fix Priya → the November review shows the carry. Review nav badge shows that country’s count when a country admin is signed in.
 
 Also: server pagination on People; Action needed selection/owner/James buttons; employee reminder email body clean; live employee totals.
 
-**Further checks (working prototype):** input-deadline mail does not list every action; unread mail is numbered; a salary saved from the profile stays approved on the open review; a post-15th joiner, bonus, or hike appears on the next review; a bank return resolves when the account is saved; review cards follow approvals and carry amounts follow the edited pay.
+**Further checks (working prototype):** input-deadline mail does not list every action; unread mail is numbered; a salary saved from the profile stays approved on the open review; a post-15th joiner, bonus, or hike appears on the next review; review cards follow approvals and carry amounts follow the edited pay.
 
 ## 12. Where the product is written down
 

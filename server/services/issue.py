@@ -13,7 +13,6 @@ from domain.calendar_rules import (  # noqa: E402
     CALCULATION,
     CUTOFF,
     NOV_CUTOFF,
-    PAYMENT_RETURNED,
     PAY_DATE,
     REVIEW_CLOSE,
     REVIEW_OPEN,
@@ -23,7 +22,6 @@ from domain.calendar_rules import (  # noqa: E402
     short_date,
 )
 
-DAVID_RETURN_DATE = PAYMENT_RETURNED
 from domain.country_status import country_statuses  # noqa: E402
 from domain.issues import can_approve, open_issues, sort_issues  # noqa: E402
 from domain.config import cycle_config  # noqa: E402
@@ -167,8 +165,6 @@ def list_issues(
     cycle = store.get_current_cycle(customer_id)
     if not cycle:
         raise LookupError("cycle_not_found")
-    if as_of:
-        ensure_david_return_issue(store, as_of)
     rows = store.list_issues(cycle["id"], status=status, as_of=as_of)
     rows = _close_completed_payment_returns(store, rows, as_of)
     # Compensation changes belong on Review & approve. Action needed is missing or invalid data.
@@ -209,50 +205,6 @@ def changes_reminder(as_of: str) -> Optional[Dict[str, Any]]:
             {"label": "Add one-time payment", "href": "/payroll/employees?hint=one-time"},
         ],
     }
-
-
-def ensure_david_return_issue(store: Store, as_of: str) -> None:
-    """From Oct 29: bank returned David's October payment → Action needed."""
-    if parse_date(as_of) < DAVID_RETURN_DATE:
-        return
-    if store.get_issue("issue_david_return"):
-        return
-    emp = store.get_employee("emp_david")
-    if not emp:
-        return
-    cycle = store.get_current_cycle(emp["customer_id"])
-    if not cycle:
-        return
-    # Mark bank as needing update
-    existing = store.required_missing_fields("emp_david")
-    if "Bank account" not in existing:
-        store.conn.execute(
-            "INSERT INTO employee_missing_fields (employee_id, field_name) VALUES (?, ?)",
-            ("emp_david", "Bank account"),
-        )
-        store.conn.commit()
-    store.insert_issue(
-        {
-            "id": "issue_david_return",
-            "cycle_id": cycle["id"],
-            "kind": "payment_returned",
-            "title": "Payment returned – update bank details",
-            "severity": "blocking",
-            "employee_id": "emp_david",
-            "country": "Germany",
-            "owner": "HR admin",
-            "deadline": NOV_CUTOFF.isoformat(),
-            "source": f"Bank return {short_date(DAVID_RETURN_DATE)}",
-            "impact": "Only David is held. The other employees were paid on time.",
-            "detail": (
-                f"Bank returned David's October payment on {DAVID_RETURN_DATE.day} {DAVID_RETURN_DATE.strftime('%b')} "
-                "(account closed). This started after October pay, so it was not on the list when inputs closed. "
-                "Update bank details to re-send."
-            ),
-            "status": "open",
-            "created_on": DAVID_RETURN_DATE.isoformat(),
-        }
-    )
 
 
 def _badge_open_issues(store: Store, open_list: List[Any], as_of: str) -> List[Any]:

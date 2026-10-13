@@ -7,7 +7,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from domain.calendar_rules import (
     CUTOFF,
     NOV_CUTOFF,
-    PAYMENT_RETURNED,
     PAY_DATE,
     cycle_dates,
     parse_date,
@@ -151,12 +150,6 @@ def pay_outlook(store: Store, emp: Dict[str, Any], as_of: str) -> Dict[str, Any]
             f"{rules_svc.fmt_money(currency, monthly)} · {month}",
             "warn",
         )
-
-    # Returned payment
-    if emp["id"] == "emp_david" and d >= PAYMENT_RETURNED:
-        issue = store.get_issue("issue_david_return", as_of=as_of)
-        if issue and issue.get("status") == "open":
-            return _pack(monthly, currency, month, "returned", "Account closed", "Returned by bank", "warn")
 
     # After pay day — paid (single month)
     if after_pay:

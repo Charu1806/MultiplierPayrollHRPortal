@@ -394,7 +394,12 @@ def _review_headline_counts(
     emps = store.list_employees(customer_id, as_of=as_of)
     by_id = {e["id"]: e for e in emps}
     line_ids = {l.get("employeeId") for l in lines if l.get("employeeId")}
-    approved_ids = {l.get("employeeId") for l in lines if l.get("approved") and l.get("employeeId")}
+    # Accept and reject are both a decision. Either one resolves the line.
+    resolved_ids = {
+        l.get("employeeId")
+        for l in lines
+        if l.get("employeeId") and (l.get("approved") or l.get("rejected"))
+    }
     changed_ids = set()
     for emp in emps:
         eid = emp["id"]
@@ -410,7 +415,7 @@ def _review_headline_counts(
     matched = 0
     for eid in changed_ids:
         emp = by_id.get(eid) or {}
-        if eid in approved_ids or emp.get("matched_source"):
+        if eid in resolved_ids or emp.get("matched_source"):
             matched += 1
     changed = len(changed_ids)
     return {
@@ -431,7 +436,7 @@ def _line_summary_counts(lines: List[Dict[str, Any]], rollup: Dict[str, int]) ->
         }
     return {
         "changedLines": len(lines),
-        "matchedLines": sum(1 for l in lines if l.get("approved")),
+        "matchedLines": sum(1 for l in lines if l.get("approved") or l.get("rejected")),
         "needsHumanCheck": sum(1 for l in lines if l.get("needsHumanCheck")),
         "employeeCount": rollup["employeeCount"],
     }

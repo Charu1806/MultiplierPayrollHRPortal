@@ -19,7 +19,6 @@ if str(ROOT / "data") not in sys.path:
 from domain.calendar_rules import (  # noqa: E402
     CUTOFF,
     NOV_CUTOFF,
-    PAYMENT_RETURNED,
     PAY_DATE,
     cycle_dates,
     next_cycle_dates,
@@ -344,15 +343,20 @@ def outcome(store: Store, customer_id: str, as_of: str) -> Optional[Dict[str, An
     moved: List[Dict[str, Any]] = []
     at_risk: List[Dict[str, Any]] = []
     returned: List[Dict[str, Any]] = []
-    david_issue = store.get_issue("issue_david_return", as_of=as_of)
-    david_open = bool(david_issue and david_issue.get("status") == "open" and parse_date(as_of) >= PAYMENT_RETURNED)
+    cycle = store.get_current_cycle(customer_id)
+    returned_ids = set()
+    if cycle:
+        for issue in store.list_issues(cycle["id"], status="open", as_of=as_of):
+            if (issue.get("kind") or "") == "payment_returned" and issue.get("employee_id"):
+                returned_ids.add(issue["employee_id"])
     for emp in emps:
         flag = pay_flag(store, emp, as_of)
         otps = one_time_payments(store, emp["id"], as_of)
         reason = _reason_label(flag, otps)
         row = {"id": emp["id"], "name": emp["name"], "country": emp["country"], "reason": reason}
-        if emp["id"] == "emp_david" and david_open:
-            returned.append({**row, "reason": f"Account closed – payment returned {short_date(PAYMENT_RETURNED)}"})
+        if emp["id"] in returned_ids:
+            returned.append({**row, "reason": "Payment was returned by the bank"})
+            paid.append(row)
             continue
         if flag.run == "At risk":
             at_risk.append(row)
@@ -377,7 +381,7 @@ def outcome(store: Store, customer_id: str, as_of: str) -> Optional[Dict[str, An
         "paymentReturned": {
             "count": len(returned),
             "employees": returned,
-            "href": "/payroll/actions?issue=issue_david_return",
+            "href": "/payroll/actions" if returned else None,
             "message": (
                 f"{len(paid)} of {in_run} paid · {len(returned)} payment returned"
                 if returned

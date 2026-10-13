@@ -105,7 +105,6 @@
     { "value": "2026-10-26", "label": "Funding" },
     { "value": "2026-10-28", "label": "Payroll submitted" },
     { "value": "2026-10-29", "label": "Pay day" },
-    { "value": "2026-10-30", "label": "Payment returned (David)" },
     { "value": "2026-11-01", "label": "November cycle open" },
     { "value": "2026-11-22", "label": "November inputs and review close" },
     { "value": "2026-11-26", "label": "November funding" },

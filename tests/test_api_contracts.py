@@ -96,40 +96,14 @@ class TestIssuesResolve:
         assert ids[0] in ("issue_001", "issue_003")  # blocking first
         assert len(ids) == 2
 
-    def test_bank_return_appears_after_pay_not_as_missed_october_input(self, api_client):
-        at_close = api_client.get("/api/issues?status=open&asOf=2026-10-15", headers=HEADERS)
-        assert at_close.status_code == 200
-        assert all(i["id"] != "issue_david_return" for i in at_close.json["issues"])
+    def test_pay_day_does_not_add_a_bank_return_surprise(self, api_client):
         later = api_client.get("/api/issues?status=open&asOf=2026-11-02", headers=HEADERS)
         assert later.status_code == 200
-        david = next(i for i in later.json["issues"] if i["id"] == "issue_david_return")
+        assert all(i.get("kind") != "payment_returned" for i in later.json["issues"])
+        assert all("Bank account" not in (i.get("title") or "") for i in later.json["issues"])
         lena = next(i for i in later.json["issues"] if i["id"] == "issue_001")
-        assert david["carriedOver"] is False
-        assert "30 Oct" in david["detail"]
-        assert "Missed October pay" not in david["detail"]
         assert lena["carriedOver"] is True
         assert lena["detail"] == "Missed October pay. November pay at risk."
-
-    def test_bank_return_leaves_action_needed_when_account_is_added(self, api_client):
-        before = api_client.get("/api/issues?status=open&asOf=2026-11-12", headers=HEADERS)
-        assert any(i["id"] == "issue_david_return" for i in before.json["issues"])
-        saved = api_client.post(
-            "/api/issues/issue_david_return/resolve",
-            headers=JSON_HEADERS,
-            json={
-                "resolution": "add_details",
-                "payload": {"fields": {"Bank account": "123456789012"}},
-                "actor": "HR admin",
-                "asOf": "2026-11-12",
-            },
-        )
-        assert saved.status_code == 200, saved.get_json()
-        assert saved.json["issue"]["status"] == "resolved"
-        assert saved.json.get("partial") is not True
-        after = api_client.get("/api/issues?status=open&asOf=2026-11-12", headers=HEADERS)
-        assert all(i["id"] != "issue_david_return" for i in after.json["issues"])
-        earlier = api_client.get("/api/issues?status=open&asOf=2026-10-30", headers=HEADERS)
-        assert any(i["id"] == "issue_david_return" for i in earlier.json["issues"])
 
     def test_resolve_lena_drops_count_germany_on_track(self, api_client):
         r = api_client.post(
@@ -293,6 +267,8 @@ class TestReviewAndEmployees:
         assert "emp_chloe" in carry
 
     def test_rejected_line_uses_previous_pay_and_is_not_a_miss(self, api_client):
+        before = api_client.get("/api/cycles/current/overview?asOf=2026-10-20", headers=HEADERS)
+        assert before.status_code == 200
         rev = api_client.get("/api/review?asOf=2026-10-20", headers=HEADERS)
         james = next(line for line in rev.json["lines"] if line["employeeId"] == "emp_james")
         rejected = api_client.post(
@@ -304,7 +280,13 @@ class TestReviewAndEmployees:
         line = next(row for row in rejected.json["lines"] if row["employeeId"] == "emp_james")
         assert line["rejected"] is True
         assert line["approved"] is False
+        assert line["needsHumanCheck"] is False
         assert line.get("carryNote") in (None, "")
+        assert rejected.json["changedLines"] == 38
+        assert rejected.json["matchedLines"] == 33
+        assert rejected.json["needsHumanCheck"] == 5
+        assert rejected.json["remaining"] == 5
+        assert rejected.json["changedLines"] == rejected.json["matchedLines"] + rejected.json["needsHumanCheck"]
         ids = {item["employeeId"] for item in (rejected.json.get("ifUnapproved") or {}).get("items") or []}
         assert "emp_james" not in ids
         outcomes = api_client.get("/api/cycles/current/overview?asOf=2026-10-29", headers=HEADERS)
@@ -313,6 +295,10 @@ class TestReviewAndEmployees:
         assert all(person["id"] != "emp_james" for person in previous)
         missing = outcomes.json["payOutcomes"]["missingInputs"]["employees"]
         assert all(person["id"] != "emp_james" for person in missing)
+        after = api_client.get("/api/cycles/current/overview?asOf=2026-10-20", headers=HEADERS)
+        assert after.status_code == 200
+        assert after.json["readiness"]["needApproval"] == before.json["readiness"]["needApproval"] - 1
+        assert after.json["readiness"]["matched"] == before.json["readiness"]["matched"] + 1
 
     def test_review_counts_and_carry_follow_pay_not_a_fixed_list(self, api_client):
         """Editing pay changes the warning amount. Undo puts the line back in Need your check."""

@@ -501,14 +501,14 @@ def _forecast_text(store: Store, customer_id: str, as_of: str, country: Optional
     scope = "" if country else " across all countries"
     paid_line = (
         f"{on_track} will be paid{scope}. {miss_n} will miss payment because details are missing. "
-        f"{wrong_n} will not get the right payment. A change still in review uses old base pay."
+        f"{wrong_n} will get old base payment."
     )
     lines = [
         f"{person['name']} — missing details"
         for person in sorted(missed, key=lambda person: (person["country"], person["name"]))
     ]
     lines.extend(
-        f"{person['name']} — will not get the right payment"
+        f"{person['name']} — will get old base payment"
         for person in sorted(wrong, key=lambda person: (person["country"], person["name"]))
     )
     if not lines:
@@ -521,9 +521,9 @@ def _actual_text(outcomes: Dict[str, Any], country: Optional[str] = None) -> str
     by_country = outcomes.get("byCountry") or {}
     reasons = (
         ("missingInputs", "missing details, missed payment"),
-        ("paidPreviousSalary", "did not get the right payment"),
+        ("paidPreviousSalary", "got old base payment"),
         ("addedAfterCutoff", "added after the window closed"),
-        ("paymentReturned", "payment returned"),
+        ("paymentReturned", "payment was returned by the bank"),
     )
 
     def named(country_name: str) -> List[str]:
@@ -540,14 +540,14 @@ def _actual_text(outcomes: Dict[str, Any], country: Optional[str] = None) -> str
         paid = int(row.get("paid") or 0)
         lines = named(country)
         missed_lines = [line for line in lines if "missed payment" in line or "missing details" in line]
-        wrong_lines = [line for line in lines if line not in missed_lines]
+        old_base_lines = [line for line in lines if "old base payment" in line]
         if not lines:
             return f"{paid} were paid. No one missed payment."
         parts = [f"{paid} were paid."]
         if missed_lines:
             parts.append(f"{len(missed_lines)} missed payment because details were missing.")
-        if wrong_lines:
-            parts.append(f"{len(wrong_lines)} did not get the right payment.")
+        if old_base_lines:
+            parts.append(f"{len(old_base_lines)} got old base payment.")
         return " ".join(parts) + "\n\n" + "\n".join(lines)
 
     paid = int((outcomes.get("paidSuccessfully") or {}).get("count") or 0)
@@ -557,7 +557,7 @@ def _actual_text(outcomes: Dict[str, Any], country: Optional[str] = None) -> str
     for country_name in ("India", "UK", "Germany", "Brazil"):
         lines = named(country_name)
         missed_lines = [line for line in lines if "missed payment" in line]
-        wrong_lines = [line for line in lines if "right payment" in line]
+        wrong_lines = [line for line in lines if "old base payment" in line]
         missed_total += len(missed_lines)
         wrong_total += len(wrong_lines)
         row = by_country.get(country_name) or {}
@@ -566,13 +566,13 @@ def _actual_text(outcomes: Dict[str, Any], country: Optional[str] = None) -> str
         if missed_lines:
             bits.append(f"{len(missed_lines)} missed payment because details were missing.")
         if wrong_lines:
-            bits.append(f"{len(wrong_lines)} did not get the right payment.")
+            bits.append(f"{len(wrong_lines)} got old base payment.")
         if not missed_lines and not wrong_lines and not lines:
             bits.append("No one missed payment.")
         blocks.append(" ".join(bits) + ("\n" + "\n".join(lines) if lines else ""))
     return (
         f"{paid} were paid. {missed_total} missed payment because details were missing. "
-        f"{wrong_total} did not get the right payment.\n\n"
+        f"{wrong_total} got old base payment.\n\n"
         + "\n\n".join(blocks)
     )
 
@@ -588,7 +588,7 @@ def _pending_line(row: Dict[str, Any], country: str) -> str:
         parts.append(f"{people} will miss payment because details are missing.")
     if wrong_n:
         people = "1 employee" if wrong_n == 1 else f"{wrong_n} employees"
-        parts.append(f"{people} will not get the right payment. Old base pay is used until the change is approved.")
+        parts.append(f"{people} will get old base payment.")
     return " ".join(parts)
 
 
@@ -954,7 +954,7 @@ def _persona_reports(store: Store, customer_id: str, as_of: str) -> List[Dict[st
                 )
             if wrong_n:
                 parts.append(
-                    f"{wrong_n} will not get the right payment ({', '.join(wrong_bits)}). Old base pay is used."
+                    f"{wrong_n} will get old base payment ({', '.join(wrong_bits)})."
                 )
             return " ".join(parts) + " Full details are on the overview."
 
@@ -1175,7 +1175,7 @@ def _persona_reports(store: Store, customer_id: str, as_of: str) -> List[Dict[st
                 )
 
         if parse_date(pay_day) <= today:
-            from server.services.sync import payday_outcomes
+            from server.services.sync import _bank_returned_phrase, payday_outcomes
 
             outcomes = payday_outcomes(store, customer_id, pay_day) or {}
             by_country = outcomes.get("byCountry") or {}
@@ -1186,9 +1186,9 @@ def _persona_reports(store: Store, customer_id: str, as_of: str) -> List[Dict[st
                 bits = []
                 for key, label in (
                     ("missingInputs", "missed payment because details were missing"),
-                    ("paidPreviousSalary", "did not get the right payment, old base pay was used"),
+                    ("paidPreviousSalary", "got old base payment"),
                     ("addedAfterCutoff", "added after the window closed"),
-                    ("paymentReturned", "payment returned"),
+                    ("paymentReturned", "payment was returned by the bank"),
                 ):
                     count = int((row.get(key) or {}).get("count") or 0)
                     if not count:
@@ -1198,12 +1198,13 @@ def _persona_reports(store: Store, customer_id: str, as_of: str) -> List[Dict[st
                         for person in (outcomes.get(key) or {}).get("employees") or []
                         if person.get("country") == country_name and person.get("name")
                     ]
+                    phrase = _bank_returned_phrase(count) if key == "paymentReturned" else f"{count} {label}"
                     if names:
                         shown = ", ".join(names[:3])
                         extra = f" and {len(names) - 3} more" if len(names) > 3 else ""
-                        bits.append(f"{count} {label} ({shown}{extra})")
+                        bits.append(f"{phrase} ({shown}{extra})")
                     else:
-                        bits.append(f"{count} {label}")
+                        bits.append(phrase)
                 moved = sum(int((row.get(key) or {}).get("count") or 0) for key, _label in (
                     ("missingInputs", ""),
                     ("paidPreviousSalary", ""),
@@ -1216,7 +1217,7 @@ def _persona_reports(store: Store, customer_id: str, as_of: str) -> List[Dict[st
                     return f"{country_name}: {paid} paid. No one missed payment."
                 return (
                     f"{country_name}: {paid} paid. {missed} missed payment because details were missing. "
-                    f"{wrong} did not get the right payment; that difference moves to the next cycle"
+                    f"{wrong} got old base payment; that difference moves to the next cycle"
                     + (f" — {'; '.join(bits)}." if bits else ".")
                 )
 

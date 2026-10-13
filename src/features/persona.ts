@@ -48,7 +48,11 @@ export function cycleDay(payDate: string, day: number): string {
 export function readStoredPersona(): PersonaId {
   if (typeof window === 'undefined') return 'global'
   const value = window.localStorage.getItem('clarity.persona')
-  if (value === 'IN' || value === 'UK' || value === 'DE' || value === 'BR' || value === 'global' || value === 'finance') return value
+  if (value === 'finance') {
+    writeStoredPersona('global')
+    return 'global'
+  }
+  if (value === 'IN' || value === 'UK' || value === 'DE' || value === 'BR' || value === 'global') return value
   return 'global'
 }
 

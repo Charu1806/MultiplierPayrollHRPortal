@@ -248,7 +248,6 @@ def test_pay_day_categories_do_not_overlap(api_client):
         outcomes["paidSuccessfully"]["count"]
         + outcomes["paidPreviousSalary"]["count"]
         + outcomes["missingInputs"]["count"]
-        + outcomes["paymentReturned"]["count"]
     )
     assert outcomes["paidSuccessfully"]["of"] == eligible
     if outcomes["paidPreviousSalary"]["count"]:
@@ -264,10 +263,17 @@ def test_pay_day_categories_do_not_overlap(api_client):
         assert missing["href"] is None
 
     later = api_client.get("/api/cycles/current/overview?asOf=2026-10-30", headers=HEADERS).json["payOutcomes"]
-    assert later["paymentReturned"]["count"] == 1
+    assert later["paymentReturned"]["count"] == 0
+    assert "emp_david" in (later["paidSuccessfully"].get("employeeIds") or [])
+    assert not any(person["id"] == "emp_david" for person in later["paymentReturned"]["employees"])
     returned_ids = _outcome_ids(later)
-    assert returned_ids.count("emp_david") == 0
+    assert returned_ids.count("emp_david") == 1
     assert len(returned_ids) == len(set(returned_ids))
+    assert later["paidSuccessfully"]["of"] == (
+        later["paidSuccessfully"]["count"]
+        + later["paidPreviousSalary"]["count"]
+        + later["missingInputs"]["count"]
+    )
 
 
 def _outcome_ids(outcomes):
@@ -489,6 +495,7 @@ def test_persona_reports_use_the_month_milestones(api_client):
     funding = next(n for n in oct_23 if "with finance" in (n.get("bodySummary") or ""))
     forecast = next(n for n in oct_23 if "will be paid" in (n.get("bodySummary") or ""))
     assert "will miss payment" in (forecast.get("bodySummary") or "")
+    assert "will get old base payment" in (forecast.get("bodySummary") or "")
     india_23 = [
         n
         for n in paid
@@ -519,7 +526,7 @@ def test_persona_reports_use_the_month_milestones(api_client):
         if n.get("audience") == "country" and n.get("country") == "India" and n["sendDate"] == "2026-10-30"
     )
     assert "were paid" in (india_close.get("bodySummary") or "")
-    assert "did not get the right payment" in (india_close.get("bodySummary") or "")
+    assert "got old base payment" in (india_close.get("bodySummary") or "")
 
 
 def test_fund_manager_yes_sets_the_day_funds_are_added(api_client):

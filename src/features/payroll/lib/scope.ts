@@ -29,15 +29,17 @@ export function reviewCards(
     return {
       lines,
       changed: lines.length,
-      matched: approved,
+      matched: lines.filter((line) => line.approved || line.rejected).length,
       needs: lines.filter((line) => line.needsHumanCheck).length,
       approved,
     }
   }
   const emps = employees.filter((emp) => emp.country === country)
   const lineIds = new Set(lines.map((line) => line.employeeId).filter(Boolean))
-  const approvedIds = new Set(
-    lines.filter((line) => line.approved && line.employeeId).map((line) => line.employeeId),
+  const resolvedIds = new Set(
+    lines
+      .filter((line) => (line.approved || line.rejected) && line.employeeId)
+      .map((line) => line.employeeId),
   )
   const changedIds = new Set<string>()
   for (const emp of emps) {
@@ -54,7 +56,7 @@ export function reviewCards(
   let matched = 0
   for (const id of changedIds) {
     const emp = emps.find((row) => row.id === id)
-    if (approvedIds.has(id) || emp?.matchedSource) matched += 1
+    if (resolvedIds.has(id) || emp?.matchedSource) matched += 1
   }
   return {
     lines,

@@ -76,6 +76,20 @@ function QueryMail({
   )
 }
 
+function peopleWord(count: number) {
+  return count === 1 ? 'employee' : 'employees'
+}
+
+function missPhrase(count: number, payDone: boolean) {
+  return `${count} ${peopleWord(count)} ${payDone ? 'missed payment' : 'will miss payment'}`
+}
+
+function oldBasePhrase(count: number, payDone: boolean) {
+  return payDone
+    ? `${count} ${peopleWord(count)} got old base pay because approvals were missing`
+    : `${count} ${peopleWord(count)} will get old base pay because approvals are missing`
+}
+
 function daysUntil(from: string, to: string): number {
   const start = Date.parse(`${from.slice(0, 10)}T00:00:00Z`)
   const end = Date.parse(`${to.slice(0, 10)}T00:00:00Z`)
@@ -158,7 +172,7 @@ function cycleFocus(asOf: string, pay: string, submitted: string | null): {
     }
   }
   return {
-    title: `Pay day ${payLabel}`,
+    title: `Paid ${payLabel}`,
     detail: submittedLabel ? `Payroll submitted ${submittedLabel}.` : 'Payroll has been submitted.',
     countdown: asOf === pay ? 'Today' : 'Paid',
     extra: '',
@@ -185,14 +199,13 @@ function SyncSummary({
   const cycle = overview?.cycle
   if (!overview || !cycle) return null
   const readiness = overview.readiness
-  const outcomes = overview.payOutcomes
-  const countryPay = country ? outcomes?.byCountry?.[country] : undefined
   const variance = overview.fundingVariance
   const estimate = overview.fundingEstimate
   const reminder = overview.changesReminder
   const pay = overview.dates?.payDate || cycle.payDate
   const submitted = overview.dates?.submitted || cycle.submitted || null
   const focus = cycleFocus(asOf, pay, submitted)
+  const payDone = asOf >= pay
   const actionsHref = country ? '/payroll/actions' : overview.statusLine.href || overview.statusLine.actionsHref || '/payroll/actions'
   const shownActions = country ? openActions : overview.statusLine.openActions
   const shownApproval = country ? needApproval : (readiness?.needApproval ?? 0)
@@ -223,7 +236,7 @@ function SyncSummary({
                 document.getElementById('countries')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
               }
             >
-              {willMiss} will miss payment
+              {missPhrase(willMiss, payDone)}
             </button>
           ) : null}
           {wrongPay > 0 ? (
@@ -234,7 +247,7 @@ function SyncSummary({
                 document.getElementById('countries')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
               }
             >
-              {wrongPay} will not get the right payment
+              {oldBasePhrase(wrongPay, payDone)}
             </button>
           ) : null}
         </div>
@@ -297,39 +310,6 @@ function SyncSummary({
           {variance.employerRates}, other {variance.other}). {estimate.note}
         </p>
       ) : null}
-      {countryPay ? (
-        <p className="border-t border-border px-4 py-3 text-text-secondary">
-          Simulated pay: {countryPay.paid} of {countryPay.of} paid ·{' '}
-          <OutcomeFix
-            count={countryPay.paidPreviousSalary.count}
-            label="not the right payment"
-            href={countryPay.paidPreviousSalary.href}
-          />{' '}
-          ·{' '}
-          <OutcomeFix
-            count={countryPay.missingInputs.count}
-            label="missing inputs"
-            href={countryPay.missingInputs.href}
-          />{' '}
-          · {countryPay.addedAfterCutoff.count} added after cutoff · {countryPay.paymentReturned.count} returned
-        </p>
-      ) : outcomes ? (
-        <p className="border-t border-border px-4 py-3 text-text-secondary">
-          Simulated pay: {outcomes.paidSuccessfully.count} of {outcomes.paidSuccessfully.of} paid ·{' '}
-          <OutcomeFix
-            count={outcomes.paidPreviousSalary.count}
-            label="not the right payment"
-            href={outcomes.paidPreviousSalary.href}
-          />{' '}
-          ·{' '}
-          <OutcomeFix
-            count={outcomes.missingInputs.count}
-            label="missing inputs"
-            href={outcomes.missingInputs.href}
-          />{' '}
-          · {outcomes.addedAfterCutoff.count} added after cutoff · {outcomes.paymentReturned.count} returned
-        </p>
-      ) : null}
     </section>
   )
 }
@@ -376,30 +356,24 @@ function PayrollResultLine({
       </span>
       <span>
         {' '}
-        · paid {summary.payDateLabel} · {summary.paid} of {summary.of} received pay ·{' '}
+        · paid {summary.payDateLabel} · {summary.paid} of {summary.of} received correct payment ·{' '}
       </span>
       <OutcomeFix
         count={summary.paidPreviousSalary?.count ?? 0}
-        label="not the right payment"
+        label="got old base payment"
         href={summary.paidPreviousSalary?.href}
       />
       <span> · </span>
       <OutcomeFix
         count={summary.missingInputs?.count ?? 0}
-        label="missing inputs"
-        href={summary.missingInputs?.href}
+        text={missedPaymentPhrase(summary.missingInputs?.count ?? 0)}
+        href={actionsNeededHref(country, summary.missingInputs?.count ?? 0)}
       />
       <span> · </span>
       <OutcomeFix
         count={summary.addedAfterCutoff?.count ?? 0}
         label="added after cutoff"
         href={summary.addedAfterCutoff?.href}
-      />
-      <span> · </span>
-      <OutcomeFix
-        count={summary.paymentReturned?.count ?? 0}
-        label="returned"
-        href={summary.paymentReturned?.href}
       />
       <span> · </span>
       <OutcomeFix
@@ -417,15 +391,35 @@ function PayrollResultLine({
   )
 }
 
-function OutcomeFix({ count, label, href }: { count: number; label: string; href?: string | null }) {
-  const text = `${count} ${label}`
-  if (!href || count === 0) return <span>{text}</span>
+function missedPaymentPhrase(count: number) {
+  return `${count} missed payment completely`
+}
+
+function actionsNeededHref(country: string | null, count: number) {
+  if (count <= 0) return null
+  if (!country) return '/payroll/actions'
+  return `/payroll/actions?country=${countryCode(country)}`
+}
+
+function OutcomeFix({
+  count,
+  label,
+  href,
+  text,
+}: {
+  count: number
+  label?: string
+  href?: string | null
+  text?: string
+}) {
+  const shown = text ?? `${count} ${label}`
+  if (!href || count === 0) return <span>{shown}</span>
   return (
     <Link
       to={href}
       className="font-medium text-sky-800 underline decoration-sky-800/40 underline-offset-2"
     >
-      {text}
+      {shown}
     </Link>
   )
 }
@@ -516,7 +510,9 @@ export function OverviewPage() {
   const earlierPayrolls = (previousPayrolls || [])
     .map((row) => countrySummary(row, scopedCountry))
     .filter((row): row is NonNullable<typeof row> => Boolean(row?.month))
-  const reportOn = formatIsoDate(cycleDay(dates?.payDate || cycle.payDate, 20))
+  const payDate = dates?.payDate || cycle.payDate
+  const payDone = asOf >= payDate
+  const reportOn = formatIsoDate(cycleDay(payDate, 20))
 
   function openCountryView(code: PersonaId, path: string) {
     if (code !== 'global') setPersona(code)
@@ -605,6 +601,7 @@ export function OverviewPage() {
         unappliedCount={reviewMeta?.unappliedCount}
         dates={stageDates}
         willMiss={willMiss}
+        noAction={wrongPay}
         financeName={financeName}
         fundsAddedOn={overview.fundsAddedOn}
       />
@@ -641,9 +638,8 @@ export function OverviewPage() {
                     </p>
                     <p className="mt-0.5 text-xs text-text-secondary">
                       {onTrack ? 'Payroll is on track.' : null}
-                      {report.people > 0 ? `${report.people} will miss payment.` : null}
-                      {report.people > 0 && report.wrong > 0 ? ' ' : null}
-                      {report.wrong > 0 ? `${report.wrong} will not get the right payment.` : null}
+                      {report.people > 0 ? `${missPhrase(report.people, payDone)}. ` : null}
+                      {report.wrong > 0 ? `${oldBasePhrase(report.wrong, payDone)}. ` : null}
                       {report.actions > 0 ? (
                         <>
                           {' '}

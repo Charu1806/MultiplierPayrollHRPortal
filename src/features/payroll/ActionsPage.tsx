@@ -23,12 +23,12 @@ function GuidedInfo() {
       <button
         type="button"
         className="rounded p-1 text-text-muted hover:bg-surface-recessed hover:text-text-primary"
-        aria-label="Guided steps"
+        aria-label="AI Chat Assistance (V2)"
       >
         <Info size={14} />
       </button>
       <span className="pointer-events-none absolute bottom-full right-0 z-10 mb-1 hidden whitespace-nowrap rounded border border-border bg-text-primary px-2 py-1 text-[11px] text-white group-hover:block">
-        Guided steps coming soon (V3)
+        AI Chat Assistance (V2)
       </span>
     </span>
   )

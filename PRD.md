@@ -49,7 +49,6 @@ Engine dates come from `config/cycle.json` and repeat for October 2026, November
 | Add funds | Funding due the 26th | 23rd–27th on the tracker, a customer setting. Mail on the 23rd, 25th, 26th, and 27th |
 | Payroll submitted | 28th | The 28th of the pay month |
 | Pay day | 29th | Customer setting on the tracker and the deadline card |
-| Payment returned | Day after pay | Included in the 30th report and in the month-end snapshot |
 
 Stages on the tracker, in order: **Input close → Review window → Final report → Review close → Funding → Payroll submitted → Pay day**. Input close, the review window, the final report, the funding window (23rd–27th), and pay day are customer settings. Multiplier recommends them; the customer can choose other dates. Review close is seven days before pay day and is a deadline imposed by Multiplier. Payroll submitted is the 28th of the pay month. Global and country HR see the same tracker. Funds are added on the day the fund manager clicks Yes. Payroll submitted says Multiplier is calculating the payment.
 
@@ -66,7 +65,7 @@ The deadline card follows the prototype date:
 - Through the 22nd: final closure.
 - Then payroll submitted, then pay day.
 
-When people will miss payment, that count is a short highlight inside the card and scrolls to Countries. The names stay on the country rows, not in a separate list on Overview. Every At risk chip uses the same amber colour. On track stays green. The country list is hidden when a country admin is signed in, because that status is already the page.
+Before pay day, people who will miss payment are a short highlight inside the card and scroll to Countries. From pay day the same lines are past tense: missed payment, and got old base payment. The names stay on the country rows, not in a separate list on Overview. Every At risk chip uses the same amber colour. On track stays green. The country list is hidden when a country admin is signed in, because that status is already the page.
 
 The yellow previous-payroll highlight appears only on the 30th and 31st of the pay month. From the 1st of the next month it is gone, and closed cycles whose pay date is before that month appear under **Previous payrolls**, most recent first, frozen at the last day of their pay month.
 
@@ -86,7 +85,6 @@ On pay day the headline categories do not overlap:
 2. Paid at the previous salary because approval was missing.
 3. Eligible but not paid because inputs were missing.
 4. Added after cutoff, so the amount moves to the next cycle.
-5. Payment returned, counted on its own from the day after pay.
 
 The 25th, 26th, and 27th emails say funds are added. That answer is the demo default. Ignore the mail when funds are already in.
 
@@ -112,7 +110,7 @@ Dates below are the day of the open month. October is only the first example.
 | 27 | Last day to add funds |
 | 28 | Payroll submitted, the 28th of the pay month |
 | 29 | Pay sent: how many paid, how many affected, amount, and why |
-| 30 | Final report of who was actually paid and who missed, including payment returns |
+| 30 | Final report of who was actually paid and who missed |
 
 **Country HR admin**
 

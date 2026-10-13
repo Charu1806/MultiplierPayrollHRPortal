@@ -173,6 +173,7 @@ class Store:
         self, customer_id: str, cycle_key: str, as_of: str
     ) -> Optional[Dict[str, Any]]:
         """Latest Yes or No whose click date is on or before the prototype date."""
+        self.ensure_schema()
         return row_to_dict(
             self.conn.execute(
                 """

@@ -436,7 +436,7 @@ def readiness(store: Store, customer_id: str, as_of: str) -> Dict[str, Any]:
             need_action.append(emp["id"])
             continue
         line = store.current_review_line(cycle["id"], emp["id"]) if cycle else None
-        if line and not store.line_approval(line["id"], as_of):
+        if line and not store.line_decision(line["id"], as_of):
             need_approval.append(emp["id"])
             continue
         matched.append(emp["id"])
@@ -485,9 +485,6 @@ def payday_outcomes(store: Store, customer_id: str, as_of: str) -> Optional[Dict
     cd = cycle_dates(as_of)
     if parse_date(as_of) < parse_date(cd["payDate"]):
         return None
-    from server.services.issue import ensure_david_return_issue
-
-    ensure_david_return_issue(store, as_of)
     deadline = parse_date(cd.get("inputDeadline") or cd["inputFinalisation"])
     cycle = store.get_current_cycle(customer_id)
     paid: List[str] = []
@@ -508,38 +505,43 @@ def payday_outcomes(store: Store, customer_id: str, as_of: str) -> Optional[Dict
         )
         row[key] += 1
 
+    open_issues = store.list_issues(cycle["id"], status="open", as_of=as_of) if cycle else []
+    missing_by_employee = {}
+    returned_by_employee = {}
+    for row in open_issues:
+        employee_id = row.get("employee_id")
+        if not employee_id:
+            continue
+        kind = row.get("kind") or ""
+        if kind == "payment_returned":
+            returned_by_employee.setdefault(employee_id, row)
+        elif kind in ("missing_fields", "missing_data"):
+            missing_by_employee.setdefault(employee_id, row)
+
+    def note_return(emp: Dict[str, Any]) -> None:
+        nonlocal returned
+        if emp["id"] not in returned_by_employee:
+            return
+        returned += 1
+        returned_people.append(
+            {
+                "id": emp["id"],
+                "name": emp["name"],
+                "country": emp.get("country"),
+                "reason": "payment returned",
+            }
+        )
+        bump(emp.get("country") or "", "returned")
+
     for emp in store.list_employees(customer_id, as_of=as_of):
-        if emp["id"] == "emp_david":
-            issue = store.get_issue("issue_david_return", as_of=as_of)
-            created = str(issue.get("created_on") or "")[:10] if issue else ""
-            if issue and issue.get("status") == "open" and (not created or as_of[:10] >= created):
-                returned += 1
-                returned_people.append(
-                    {
-                        "id": emp["id"],
-                        "name": emp["name"],
-                        "country": emp.get("country"),
-                        "reason": "payment returned",
-                    }
-                )
-                bump(emp.get("country") or "", "returned")
-                continue
         added = emp.get("date_added")
         if added and parse_date(added) > deadline:
             amount = prorate(float(emp.get("base_salary") or 0), added)["amount"]
             late.append({"id": emp["id"], "name": emp["name"], "prorated": amount, "country": emp.get("country")})
             bump(emp.get("country") or "", "late")
+            note_return(emp)
             continue
-        open_issue = None
-        if cycle:
-            for row in store.list_issues(cycle["id"], status="open", as_of=as_of):
-                if row.get("employee_id") == emp["id"] and (row.get("kind") or "") in (
-                    "missing_fields",
-                    "missing_data",
-                    "payment_returned",
-                ):
-                    open_issue = row
-                    break
+        open_issue = missing_by_employee.get(emp["id"])
         if open_issue:
             missing.append(
                 {
@@ -552,12 +554,14 @@ def payday_outcomes(store: Store, customer_id: str, as_of: str) -> Optional[Dict
                 }
             )
             bump(emp.get("country") or "", "missing")
+            note_return(emp)
             continue
         line = store.current_review_line(cycle["id"], emp["id"]) if cycle else None
         decision = store.line_decision(line["id"], as_of) if line else None
         if decision and (decision.get("decision") or "approved") == "rejected":
             paid.append(emp["id"])
             bump(emp.get("country") or "", "paid")
+            note_return(emp)
             continue
         if line and not decision:
             previous.append(
@@ -569,15 +573,18 @@ def payday_outcomes(store: Store, customer_id: str, as_of: str) -> Optional[Dict
                 }
             )
             bump(emp.get("country") or "", "previous")
+            note_return(emp)
             continue
         paid.append(emp["id"])
         bump(emp.get("country") or "", "paid")
-    eligible = len(paid) + len(previous) + len(missing) + returned
+        note_return(emp)
+    # A bank return stays inside the correct-payment count. It is not a separate person.
+    eligible = len(paid) + len(previous) + len(missing)
     country_outcomes = {}
     for country, row in by_country.items():
         country_outcomes[country] = {
             "paid": row["paid"],
-            "of": row["paid"] + row["previous"] + row["missing"] + row["returned"],
+            "of": row["paid"] + row["previous"] + row["missing"],
             "paidPreviousSalary": {
                 "count": row["previous"],
                 "href": "/payroll/review" if row["previous"] else None,
@@ -615,6 +622,13 @@ def payday_outcomes(store: Store, customer_id: str, as_of: str) -> Optional[Dict
     }
 
 
+def _bank_returned_phrase(count: int) -> str:
+    """How many payments the bank sent back. The count comes from the pay outcome."""
+    if count == 1:
+        return "1 payment was returned by the bank"
+    return f"{count} payments were returned by the bank"
+
+
 def _month_end(day: date) -> date:
     if day.month == 12:
         nxt = date(day.year + 1, 1, 1)
@@ -642,9 +656,9 @@ def _cycle_pay_summary(
     month = str(cycle["label"]).split()[0]
     pay_label = short_date(cycle["payDate"])
     message = (
-        f"**{month} payroll** · paid {pay_label} · {paid['count']} of {paid['of']} received pay · "
-        f"{previous_salary['count']} at previous salary · {missing['count']} missing inputs · "
-        f"{len(late)} added after cutoff · {returned} returned · "
+        f"**{month} payroll** · paid {pay_label} · {paid['count']} of {paid['of']} received correct payment · "
+        f"{previous_salary['count']} got old base payment · {missing['count']} missed payment completely · "
+        f"{len(late)} added after cutoff · "
         f"{len(added)} added · {len(left)} left"
     )
     missed = previous_salary["count"] + missing["count"] + len(late) + returned

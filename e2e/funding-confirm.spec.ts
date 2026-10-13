@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test'
 test('fund manager Yes marks funds added on that day', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('clarity.asOf', '2026-10-24')
-    localStorage.setItem('clarity.persona', 'finance')
+    localStorage.setItem('clarity.persona', 'global')
   })
   await page.goto('/payroll/overview')
   await expect(page.getByRole('heading', { name: 'Overview' })).toBeVisible({ timeout: 20000 })
@@ -12,6 +12,7 @@ test('fund manager Yes marks funds added on that day', async ({ page }) => {
   await expect(tracker).not.toContainText('Funds added Oct')
 
   await page.goto('/people/notifications')
+  await page.getByRole('button', { name: /please confirm funds are added/ }).click()
   await expect(page.getByRole('heading', { name: 'October: please confirm funds are added' })).toBeVisible({
     timeout: 20000,
   })

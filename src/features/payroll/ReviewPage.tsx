@@ -102,7 +102,7 @@ function RowActions({
       ) : line.rejected ? (
         <>
           <span className="inline-flex h-8 items-center rounded border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-700">
-            Rejected · old base pay
+            Rejected
           </span>
           {!muted ? (
             <button
@@ -271,7 +271,7 @@ export function ReviewPage() {
   function openRejectLine(line: ReviewLineDto) {
     askConfirm({
       title: 'Reject line',
-      body: `Reject ${line.employeeName}'s change (${line.changeSummary})? Old base pay is deposited. This is not a missed payment and not an incorrect payment.`,
+      body: `Reject ${line.employeeName}'s change (${line.changeSummary})? HR has resolved this line. It is not a missed payment and not a wrong payment.`,
       confirmLabel: 'Reject',
       onConfirm: async () => {
         setConfirmBusy(true)
@@ -279,7 +279,7 @@ export function ReviewPage() {
         try {
           await rejectLine(line.id)
           cancelConfirm()
-          pushToast(`Rejected ${line.employeeName} · old base pay`)
+          pushToast(`Rejected ${line.employeeName}`)
         } catch (err) {
           setConfirmError(err instanceof Error ? err.message : 'Could not reject line')
         } finally {
@@ -402,7 +402,7 @@ export function ReviewPage() {
               to: '/people?filter=reconciled',
               label: 'Matched to a source',
               value: cards?.matched ?? 0,
-              tip: 'Multiplier found a record that explains the change.',
+              tip: 'A matching record, or HR has accepted or rejected the change.',
             },
             {
               to: '#review-table',
@@ -446,6 +446,18 @@ export function ReviewPage() {
         })}
       </div>
 
+      {remaining > 0 ? (
+        <p className="text-[13px] text-text-secondary">
+          <strong className="text-text-primary">
+            {remaining}{' '}
+            {asOf >= (overview?.dates?.payDate || overview?.cycle.payDate || '')
+              ? 'got old base payment'
+              : 'will get old base payment'}{' '}
+            because HR has not acted.
+          </strong>
+        </p>
+      ) : null}
+
       {review.showOpenExtras && heldOut && heldOut.count > 0 ? (
         <p className="text-[13px] text-text-secondary">
           <strong className="text-text-primary">{heldOut.message}</strong>{' '}
@@ -470,14 +482,14 @@ export function ReviewPage() {
       <CarryNotice block={carry} />
 
       <div id="review-table" className="overflow-x-auto rounded border border-border bg-surface">
-        <table className="w-full min-w-0 table-fixed border-collapse text-left">
+        <table className="w-full min-w-[1120px] border-collapse text-left">
           <colgroup>
-            <col className="w-[15%]" />
             <col className="w-[16%]" />
-            <col className="w-[16%]" />
-            <col className="w-[14%]" />
             <col className="w-[18%]" />
-            <col style={{ width: 220 }} />
+            <col className="w-[14%]" />
+            <col className="w-[14%]" />
+            <col className="w-[22%]" />
+            <col className="w-[16%]" />
           </colgroup>
           <thead>
             <tr className="h-8 bg-surface-recessed text-[11px] font-medium uppercase tracking-wide text-text-secondary">
